@@ -25,7 +25,13 @@ endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+if(REMAPPER_BUILD_PICO)
+    # Pico SDK RP2350 sources use GNU C extensions such as the `asm` keyword.
+    set(CMAKE_C_EXTENSIONS ON)
+else()
+    # Host-side domain/architecture tests remain strict ISO C11.
+    set(CMAKE_C_EXTENSIONS OFF)
+endif()
 
 include(cmake/RemapperModules.cmake)
 remapper_define_modules()
