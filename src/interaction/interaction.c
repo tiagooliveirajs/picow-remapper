@@ -258,13 +258,25 @@ static void activate_primary_action(
     }
 
     remapper_command_t command = remapper_command_none();
-    if (prepare_command(
+    if (!prepare_command(
             state,
             definition->primary_command,
             definition->primary_command_uses_selected_value,
             &command
         )) {
-        result->command = command;
+        return;
+    }
+
+    result->command = command;
+
+    /*
+     * The canonical Custom Remap contract treats APPLY THIS as a draft edit:
+     * the mapping command is emitted and the UI returns to EDIT CUSTOM REMAP
+     * on the same Key A release. The final draft commit remains a separate
+     * Key A action owned by EDIT CUSTOM REMAP.
+     */
+    if (command.kind == REMAPPER_COMMAND_APPLY_CUSTOM_MAPPING) {
+        navigate_back(state, result);
     }
 }
 
