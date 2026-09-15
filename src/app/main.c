@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "pico/stdlib.h"
 #include "remapper/app/ui_projection.h"
@@ -85,6 +86,9 @@ static void service_usb_mouse(
 
 int main(void)
 {
+    stdio_init_all();
+    printf("[BOOT] REMAPPER-G06 0.6.1-g06-uart\n");
+
     remapper_interaction_state_t interaction;
     remapper_display_hal_t display;
     remapper_hid_aggregator_t hid_aggregator;
