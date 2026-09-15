@@ -7,6 +7,7 @@
 static remapper_logitech_hidpp_t g_hidpp;
 static volatile bool g_forward_desired;
 static remapper_hidpp_output_kind_t g_last_output_kind;
+static bool g_transport_failed;
 
 static bool vendor_input(
     void *context,
@@ -47,7 +48,10 @@ static bool vendor_next_output(
     uint16_t payload_capacity)
 {
     (void)context;
-    if (report_id == NULL || payload == NULL || payload_len == NULL) return false;
+    if (report_id == NULL || payload == NULL || payload_len == NULL ||
+        g_transport_failed) {
+        return false;
+    }
 
     remapper_logitech_hidpp_set_forward_desired(
         &g_hidpp,
@@ -69,10 +73,19 @@ static bool vendor_next_output(
 static void vendor_output_result(void *context, bool accepted)
 {
     (void)context;
+    if (!accepted) {
+        /* A peer without Logitech HID++/report 0x11 can reject the write at
+         * the HIDS boundary. Treat that as a one-shot capability probe for
+         * this BLE session instead of retrying vendor traffic every timer
+         * tick. Standard HID input remains active because Forward is not
+         * claimed until diversion has actually been acknowledged. */
+        g_transport_failed = true;
+        return;
+    }
     remapper_logitech_hidpp_output_result(
         &g_hidpp,
         g_last_output_kind,
-        accepted);
+        true);
 }
 
 static bool vendor_claims_button(void *context, remapper_mouse_button_t button)
@@ -85,6 +98,7 @@ static bool vendor_claims_button(void *context, remapper_mouse_button_t button)
 static void vendor_session(void *context, bool connected)
 {
     (void)context;
+    g_transport_failed = false;
     if (connected) {
         remapper_logitech_hidpp_on_connect(&g_hidpp);
         remapper_logitech_hidpp_set_forward_desired(
@@ -101,6 +115,7 @@ bool remapper_logitech_hidpp_pico_start(void)
     remapper_logitech_hidpp_init(&g_hidpp);
     g_forward_desired = false;
     g_last_output_kind = REMAPPER_HIDPP_OUTPUT_NONE;
+    g_transport_failed = false;
 
     const remapper_ble_hogp_vendor_backend_t backend = {
         .context = NULL,
