@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 option(REMAPPER_BUILD_PICO "Build the Raspberry Pi Pico 2 W firmware" OFF)
-option(REMAPPER_BUILD_TESTS "Build host-side architecture, UX and USB-contract tests" ON)
+option(REMAPPER_BUILD_TESTS "Build host-side architecture, UX, USB and canonical HID tests" ON)
 
 if(REMAPPER_BUILD_PICO)
     set(PICO_BOARD "pico2_w" CACHE STRING "Raspberry Pi Pico SDK board target")
@@ -68,10 +68,15 @@ if(REMAPPER_BUILD_TESTS)
     target_link_libraries(test_g04_usb_layout PRIVATE renderer usb_hid)
     target_compile_options(test_g04_usb_layout PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+    add_executable(test_g05_hid_ownership tests/test_g05_hid_ownership.c)
+    target_link_libraries(test_g05_hid_ownership PRIVATE hid_aggregator)
+    target_compile_options(test_g05_hid_ownership PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
     add_test(NAME scaffold_contract COMMAND test_scaffold)
     add_test(NAME ux_interaction_contract COMMAND test_ux_interaction)
     add_test(NAME g03_renderer_hat_contract COMMAND test_g03_ui)
     add_test(NAME g04_usb_layout_contract COMMAND test_g04_usb_layout)
+    add_test(NAME g05_canonical_hid_ownership COMMAND test_g05_hid_ownership)
     add_test(NAME architecture_boundaries COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_architecture.py)
 endif()
 
@@ -81,8 +86,8 @@ if(REMAPPER_BUILD_PICO)
     target_compile_definitions(
         picow_remapper
         PRIVATE
-            REMAPPER_GATE_NAME="REMAPPER-G04"
-            REMAPPER_FIRMWARE_VERSION="0.4.1-g04"
+            REMAPPER_GATE_NAME="REMAPPER-G05"
+            REMAPPER_FIRMWARE_VERSION="0.5.0-g05"
     )
     pico_enable_stdio_usb(picow_remapper 0)
     pico_enable_stdio_uart(picow_remapper 0)
