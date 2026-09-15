@@ -1,0 +1,12 @@
+build/
+build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+*.elf
+*.uf2
+*.bin
+*.hex
+*.map
