@@ -18,9 +18,10 @@ if(REMAPPER_BUILD_PICO)
     endif()
 
     include("${PICO_SDK_PATH}/external/pico_sdk_import.cmake")
+    project(picow_remapper LANGUAGES C CXX ASM)
+else()
+    project(picow_remapper LANGUAGES C)
 endif()
-
-project(picow_remapper LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
