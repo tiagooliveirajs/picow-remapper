@@ -112,10 +112,10 @@ if(REMAPPER_BUILD_PICO)
         picow_remapper
         PRIVATE
             REMAPPER_GATE_NAME="REMAPPER-G06"
-            REMAPPER_FIRMWARE_VERSION="0.6.0-g06"
+            REMAPPER_FIRMWARE_VERSION="0.6.1-g06-uart"
             CYW43_LWIP=0
     )
     pico_enable_stdio_usb(picow_remapper 0)
-    pico_enable_stdio_uart(picow_remapper 0)
+    pico_enable_stdio_uart(picow_remapper 1)
     pico_add_extra_outputs(picow_remapper)
 endif()
