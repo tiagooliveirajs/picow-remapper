@@ -115,6 +115,9 @@ def main() -> None:
         if token not in root_cmake:
             fail(f"G06 Pico composition is missing {token}")
 
+    if "CFG_TUD_CDC=1" not in root_cmake or "tinyusb_device_base" not in root_cmake:
+        fail("G06 debug CDC is not forced into the TinyUSB interface sources")
+
     source_files = [
         path for path in SRC.rglob("*")
         if path.is_file() and path.suffix.lower() in {".c", ".h"}
@@ -182,6 +185,17 @@ def main() -> None:
         if token not in ble_text:
             fail(f"G06 BLE HOGP adapter is missing {token}")
 
+    ble_pico = (BLE_HOGP_SRC / "ble_hogp_pico.c").read_text(encoding="utf-8")
+    for token in (
+        "appearance_is_explicit_non_mouse_hid",
+        "address_is_rejected",
+        "gap_subevent_le_connection_complete_get_status",
+        "sm_event_reencryption_complete_get_status",
+        "BLE_HOGP_DESCRIPTOR_STORAGE_SIZE 2048u",
+    ):
+        if token not in ble_pico:
+            fail(f"G06 BLE recovery/mouse-selection guard is missing {token}")
+
     usb_text = "\n".join(
         path.read_text(encoding="utf-8")
         for path in USB_SRC.rglob("*")
@@ -194,6 +208,14 @@ def main() -> None:
         if token in usb_text:
             fail(f"G06 must never force USB re-enumeration: {token}")
 
+    usb_pico = (USB_SRC / "usb_hid_pico.c").read_text(encoding="utf-8")
+    if "tud_task_ext(0u, false)" not in usb_pico:
+        fail("G06 Core0 USB service must be explicitly non-blocking")
+    if re.search(r"\btud_task\s*\(\s*\)\s*;", usb_pico):
+        fail("blocking tud_task() is forbidden in the shared Core0 UI loop")
+    if "REMAPPER_USB_DEBUG_FLUSH_BUDGET" not in usb_pico:
+        fail("debug CDC flush must have a per-tick byte budget")
+
     tusb_config = (USB_SRC / "include" / "tusb_config.h").read_text(encoding="utf-8")
     if not re.search(r"#define\s+CFG_TUD_HID\s+2\b", tusb_config):
         fail("TinyUSB is not configured for exactly two HID interfaces")
@@ -205,6 +227,8 @@ def main() -> None:
     for token in ("remapper_bt_runtime_poll", "remapper_hid_aggregator_apply_mouse", "remapper_usb_hid_pico_send_mouse"):
         if token not in main_text:
             fail(f"G06 Core0 passthrough pipeline is missing {token}")
+    if "remapper_runtime_messages_per_tick" not in main_text:
+        fail("Core0 must bound Bluetooth queue work per UI tick")
 
 
 if __name__ == "__main__":
