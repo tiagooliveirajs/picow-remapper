@@ -58,6 +58,11 @@ if(REMAPPER_BUILD_PICO)
             pico_cyw43_arch_threadsafe_background
     )
     target_compile_definitions(bt_runtime PUBLIC CYW43_LWIP=0)
+    pico_btstack_make_gatt_header(
+        bt_runtime
+        PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/src/bt_runtime/g06_hog_host.gatt
+    )
 
     target_sources(ble_hogp PRIVATE src/ble_hogp/ble_hogp_pico.c)
     target_link_libraries(ble_hogp PRIVATE pico_stdlib pico_btstack_ble)

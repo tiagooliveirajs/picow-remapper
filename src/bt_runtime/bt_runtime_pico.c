@@ -1,6 +1,7 @@
 #include "remapper/bt_runtime/bt_runtime.h"
 
 #include "btstack.h"
+#include "g06_hog_host.gatt.h"
 #include "pico/cyw43_arch.h"
 #include "pico/multicore.h"
 
@@ -17,6 +18,13 @@ static void remapper_bt_runtime_core1_main(void)
     sm_set_authentication_requirements(
         SM_AUTHREQ_SECURE_CONNECTION | SM_AUTHREQ_BONDING);
     gatt_client_init();
+
+    /*
+     * Some BLE peripherals issue ATT queries to the central. A minimal local
+     * GAP service matches the proven HOGP host POC and keeps those peers
+     * interoperable without exposing any product state through GATT.
+     */
+    att_server_init(profile_data, NULL, NULL);
 
     if (g_session_setup != NULL) g_session_setup();
 
