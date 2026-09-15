@@ -46,19 +46,6 @@ static remapper_hid_source_state_t *find_source(
     return NULL;
 }
 
-static const remapper_hid_source_state_t *find_source_const(
-    const remapper_hid_aggregator_t *aggregator,
-    remapper_hid_source_t source)
-{
-    for (size_t i = 0; i < REMAPPER_HID_AGGREGATOR_MAX_SOURCES; ++i) {
-        const remapper_hid_source_state_t *slot = &aggregator->sources[i];
-        if (slot->active && remapper_hid_source_equal(slot->id, source)) {
-            return slot;
-        }
-    }
-    return NULL;
-}
-
 static remapper_hid_source_state_t *find_or_allocate_source(
     remapper_hid_aggregator_t *aggregator,
     remapper_hid_source_t source)
@@ -99,7 +86,7 @@ bool remapper_hid_aggregator_apply_mouse(
     switch (event->type) {
         case REMAPPER_MOUSE_EVENT_BUTTON: {
             const remapper_mouse_button_t button = event->data.button.button;
-            if (button < 0 || button >= REMAPPER_MOUSE_BUTTON_COUNT) {
+            if ((unsigned int)button >= (unsigned int)REMAPPER_MOUSE_BUTTON_COUNT) {
                 return false;
             }
 
@@ -190,7 +177,7 @@ bool remapper_hid_aggregator_apply_keyboard(
 
         case REMAPPER_KEYBOARD_EVENT_MODIFIER: {
             const remapper_modifier_t modifier = event->data.modifier.modifier;
-            if (modifier < 0 || modifier >= REMAPPER_MOD_COUNT) {
+            if ((unsigned int)modifier >= (unsigned int)REMAPPER_MOD_COUNT) {
                 return false;
             }
 
