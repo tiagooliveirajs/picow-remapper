@@ -275,13 +275,12 @@ static void test_custom_draft_mapping_and_commit(void)
     result = send_event(&state, REMAPPER_CONTROL_KEY_A, REMAPPER_INPUT_PRESS);
     assert(result.command.kind == REMAPPER_COMMAND_NONE);
     assert(!remapper_interaction_selection_emphasized(&state));
+    assert(state.screen == REMAPPER_UX_SCREEN_MAP_LEFT);
 
     result = send_event(&state, REMAPPER_CONTROL_KEY_A, REMAPPER_INPUT_RELEASE);
     assert(result.command.kind == REMAPPER_COMMAND_APPLY_CUSTOM_MAPPING);
     assert(result.command.data.custom_mapping.source == REMAPPER_MOUSE_SOURCE_LEFT);
     assert(result.command.data.custom_mapping.target_token == 22u);
-
-    result = click(&state, REMAPPER_CONTROL_KEY_B);
     assert(result.screen_changed);
     assert(state.screen == REMAPPER_UX_SCREEN_EDIT_CUSTOM_REMAP);
     assert(state.selected_option == 0u);
