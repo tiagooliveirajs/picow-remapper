@@ -15,6 +15,7 @@ extern "C" {
 #define REMAPPER_BLE_HOGP_MAX_FIELDS 48u
 #define REMAPPER_BLE_HOGP_MAX_REPORTS 16u
 #define REMAPPER_BLE_HOGP_RUNTIME_CHANNEL UINT16_C(0x0601)
+#define REMAPPER_BLE_HOGP_VENDOR_OUTPUT_MAX 32u
 
 typedef enum {
     REMAPPER_BLE_HOGP_MESSAGE_CONNECTED = 1,
@@ -89,6 +90,11 @@ typedef bool (*remapper_ble_hogp_emit_fn)(
     void *context,
     const remapper_canonical_mouse_event_t *event);
 
+typedef struct {
+    uint8_t address_type;
+    uint8_t address[6];
+} remapper_ble_hogp_peer_t;
+
 typedef enum {
     REMAPPER_BLE_HOGP_EVENT_CONNECTED = 0,
     REMAPPER_BLE_HOGP_EVENT_DISCONNECTED,
@@ -97,8 +103,47 @@ typedef enum {
 
 typedef struct {
     remapper_ble_hogp_event_type_t type;
+    remapper_ble_hogp_peer_t peer;
     remapper_canonical_mouse_event_t mouse;
 } remapper_ble_hogp_event_t;
+
+/*
+ * Optional vendor backend hook. Remote vendor packets remain inside adapter
+ * composition: app/USB never receive report IDs or vendor layouts. The backend
+ * may consume a normalized packet and emit canonical mouse events only.
+ */
+typedef bool (*remapper_ble_hogp_vendor_input_fn)(
+    void *context,
+    remapper_hid_source_t source,
+    uint8_t report_id,
+    const uint8_t *payload,
+    size_t payload_len,
+    remapper_ble_hogp_emit_fn emit,
+    void *emit_context);
+typedef bool (*remapper_ble_hogp_vendor_output_fn)(
+    void *context,
+    uint8_t *report_id,
+    uint8_t *payload,
+    uint16_t *payload_len,
+    uint16_t payload_capacity);
+typedef void (*remapper_ble_hogp_vendor_output_result_fn)(
+    void *context,
+    bool accepted);
+typedef bool (*remapper_ble_hogp_vendor_claims_button_fn)(
+    void *context,
+    remapper_mouse_button_t button);
+typedef void (*remapper_ble_hogp_vendor_session_fn)(
+    void *context,
+    bool connected);
+
+typedef struct {
+    void *context;
+    remapper_ble_hogp_vendor_input_fn input;
+    remapper_ble_hogp_vendor_output_fn next_output;
+    remapper_ble_hogp_vendor_output_result_fn output_result;
+    remapper_ble_hogp_vendor_claims_button_fn claims_button;
+    remapper_ble_hogp_vendor_session_fn session;
+} remapper_ble_hogp_vendor_backend_t;
 
 bool remapper_ble_hogp_parser_configure(
     remapper_ble_hogp_parser_t *parser,
@@ -107,6 +152,13 @@ bool remapper_ble_hogp_parser_configure(
     size_t descriptor_len);
 bool remapper_ble_hogp_parser_has_mouse(
     const remapper_ble_hogp_parser_t *parser);
+bool remapper_ble_hogp_parser_normalize_report(
+    const remapper_ble_hogp_parser_t *parser,
+    uint8_t report_id,
+    const uint8_t *report,
+    size_t report_len,
+    const uint8_t **payload,
+    size_t *payload_len);
 bool remapper_ble_hogp_parser_parse_report(
     remapper_ble_hogp_parser_t *parser,
     uint8_t report_id,
@@ -119,6 +171,8 @@ bool remapper_ble_hogp_decode_runtime_message(
     const remapper_bt_runtime_message_t *message,
     remapper_ble_hogp_event_t *event);
 
+bool remapper_ble_hogp_register_vendor_backend(
+    const remapper_ble_hogp_vendor_backend_t *backend);
 bool remapper_ble_hogp_start(void);
 
 #ifdef __cplusplus

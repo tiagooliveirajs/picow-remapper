@@ -34,6 +34,37 @@ static const remapper_ble_hogp_report_state_t *find_report_state(
     return NULL;
 }
 
+bool remapper_ble_hogp_parser_normalize_report(
+    const remapper_ble_hogp_parser_t *parser,
+    uint8_t report_id,
+    const uint8_t *report,
+    size_t report_len,
+    const uint8_t **payload,
+    size_t *payload_len)
+{
+    if (parser == NULL || report == NULL || payload == NULL || payload_len == NULL) {
+        return false;
+    }
+
+    const remapper_ble_hogp_report_state_t *state =
+        find_report_state(parser, report_id);
+    if (state == NULL) return false;
+
+    const size_t expected_len = ((size_t)state->input_bits + 7u) / 8u;
+    if (report_len == expected_len) {
+        *payload = report;
+        *payload_len = report_len;
+        return true;
+    }
+    if (report_len == expected_len + 1u && report_len > 0u &&
+        report[0] == report_id) {
+        *payload = report + 1u;
+        *payload_len = report_len - 1u;
+        return true;
+    }
+    return false;
+}
+
 bool remapper_ble_hogp_parser_parse_report(
     remapper_ble_hogp_parser_t *parser,
     uint8_t report_id,
@@ -44,23 +75,10 @@ bool remapper_ble_hogp_parser_parse_report(
 {
     if (parser == NULL || report == NULL || emit == NULL) return false;
 
-    const remapper_ble_hogp_report_state_t *state =
-        find_report_state(parser, report_id);
-    if (state == NULL) return false;
-
-    const size_t expected_len = ((size_t)state->input_bits + 7u) / 8u;
-    const uint8_t *payload = report;
-    size_t payload_len = report_len;
-
-    if (report_len == expected_len) {
-        /* Already canonical: Report ID arrived only in event metadata. */
-    } else if (report_len == expected_len + 1u &&
-               report_len > 0u &&
-               report[0] == report_id) {
-        /* BTstack HIDS framing: duplicated Report ID precedes the payload. */
-        payload = report + 1u;
-        payload_len = report_len - 1u;
-    } else {
+    const uint8_t *payload = NULL;
+    size_t payload_len = 0u;
+    if (!remapper_ble_hogp_parser_normalize_report(
+            parser, report_id, report, report_len, &payload, &payload_len)) {
         return false;
     }
 

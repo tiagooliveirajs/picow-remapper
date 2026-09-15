@@ -8,7 +8,7 @@ on:
 
 jobs:
   host:
-    name: host-ux-usb-hid-ble-architecture
+    name: host-ux-usb-hid-ble-g07-architecture
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -21,7 +21,7 @@ jobs:
         run: ctest --test-dir build-host --output-on-failure
 
   pico2w:
-    name: pico2-w-g06
+    name: pico2-w-g07
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -36,21 +36,21 @@ jobs:
           git clone --depth 1 --branch 2.2.0 https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
           git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1
           echo "PICO_SDK_PATH=$RUNNER_TEMP/pico-sdk" >> "$GITHUB_ENV"
-      - name: Configure Pico 2 W G06
+      - name: Configure Pico 2 W G07
         run: cmake -S . -B build-pico -DREMAPPER_BUILD_PICO=ON -DREMAPPER_BUILD_TESTS=OFF -DREMAPPER_USB_DEBUG_CDC=OFF -DPICO_BOARD=pico2_w -DCMAKE_BUILD_TYPE=Release
-      - name: Build Pico 2 W G06
+      - name: Build Pico 2 W G07
         run: cmake --build build-pico --parallel
       - name: Verify UF2
         run: test -s build-pico/picow_remapper.uf2
-      - name: Upload G06 UF2
+      - name: Upload G07 UF2
         uses: actions/upload-artifact@v4
         with:
-          name: picow-remapper-g06-pico2w
+          name: picow-remapper-g07-pico2w
           path: build-pico/picow_remapper.uf2
           if-no-files-found: error
 
   pico2w-debug-cdc:
-    name: pico2-w-g06-debug-cdc
+    name: pico2-w-g07-debug-cdc
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -65,15 +65,15 @@ jobs:
           git clone --depth 1 --branch 2.2.0 https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
           git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1
           echo "PICO_SDK_PATH=$RUNNER_TEMP/pico-sdk" >> "$GITHUB_ENV"
-      - name: Configure Pico 2 W G06 debug CDC
+      - name: Configure Pico 2 W G07 debug CDC
         run: cmake -S . -B build-pico-debug -DREMAPPER_BUILD_PICO=ON -DREMAPPER_BUILD_TESTS=OFF -DREMAPPER_USB_DEBUG_CDC=ON -DPICO_BOARD=pico2_w -DCMAKE_BUILD_TYPE=Release
-      - name: Build Pico 2 W G06 debug CDC
+      - name: Build Pico 2 W G07 debug CDC
         run: cmake --build build-pico-debug --parallel
       - name: Verify debug UF2
         run: test -s build-pico-debug/picow_remapper.uf2
-      - name: Upload G06 debug CDC UF2
+      - name: Upload G07 debug CDC UF2
         uses: actions/upload-artifact@v4
         with:
-          name: picow-remapper-g06-debug-cdc-pico2w
+          name: picow-remapper-g07-debug-cdc-pico2w
           path: build-pico-debug/picow_remapper.uf2
           if-no-files-found: error
