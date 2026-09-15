@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
+#include <string.h>
 
 #include "pico/stdlib.h"
 #include "remapper/app/ui_projection.h"
@@ -46,6 +46,116 @@ static int8_t clamp_i8(int32_t value)
     return (int8_t)value;
 }
 
+static void log_ble_debug_record(const remapper_ble_hogp_debug_record_t *record)
+{
+    if (record == NULL) return;
+    switch ((remapper_ble_hogp_debug_code_t)record->code) {
+    case REMAPPER_BLE_HOGP_DEBUG_SESSION_SETUP:
+        remapper_usb_hid_pico_debug_printf("[BT] session setup\r\n");
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_STACK_READY:
+        remapper_usb_hid_pico_debug_printf("[BT] stack ready\r\n");
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_SCAN_STARTED:
+        remapper_usb_hid_pico_debug_printf("[BLE] scan started\r\n");
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_HID_ADVERTISEMENT:
+        remapper_usb_hid_pico_debug_printf(
+            "[BLE] HID advertisement type=%u rssi=%ld\r\n",
+            record->status,
+            (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_CONNECTING:
+        remapper_usb_hid_pico_debug_printf(
+            "[BLE] connecting address_type=%u\r\n",
+            record->status);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_LE_CONNECTED:
+        remapper_usb_hid_pico_debug_printf(
+            "[BLE] LE connected status=%u handle=%ld\r\n",
+            record->status,
+            (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_PAIRING_STARTED:
+        remapper_usb_hid_pico_debug_printf("[SM] pairing started handle=%ld\r\n", (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_PAIRING_COMPLETE:
+        remapper_usb_hid_pico_debug_printf(
+            "[SM] pairing complete status=%u handle=%ld reencrypt=%ld\r\n",
+            record->status,
+            (long)record->a,
+            (long)record->b);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_HIDS_CONNECTING:
+        remapper_usb_hid_pico_debug_printf("[HOGP] connecting HIDS handle=%ld\r\n", (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_HIDS_CONNECTED:
+        remapper_usb_hid_pico_debug_printf(
+            "[HOGP] service connected status=%u cid=%ld\r\n",
+            record->status,
+            (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_REPORT_MAP:
+        remapper_usb_hid_pico_debug_printf("[HOGP] report map len=%ld\r\n", (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_PARSER_READY:
+        remapper_usb_hid_pico_debug_printf(
+            "[HOGP] parser ready fields=%ld reports=%ld\r\n",
+            (long)record->a,
+            (long)record->b);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_REPORT_RX:
+        remapper_usb_hid_pico_debug_printf(
+            "[HOGP] report id=%u len=%ld\r\n",
+            record->report_id,
+            (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_DISCONNECTED:
+        remapper_usb_hid_pico_debug_printf(
+            "[BLE] disconnected reason=%u handle=%ld\r\n",
+            record->status,
+            (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_RESCAN:
+        remapper_usb_hid_pico_debug_printf("[BLE] disconnect/rescan state=%ld\r\n", (long)record->a);
+        break;
+    case REMAPPER_BLE_HOGP_DEBUG_ERROR:
+        remapper_usb_hid_pico_debug_printf(
+            "[ERR] BLE stage=%ld status=%u report=%u a=%ld b=%ld\r\n",
+            (long)record->a,
+            record->status,
+            record->report_id,
+            (long)record->b,
+            (long)record->c);
+        break;
+    }
+}
+
+static void log_mouse_event(const remapper_canonical_mouse_event_t *event)
+{
+    if (event == NULL) return;
+    switch (event->type) {
+    case REMAPPER_MOUSE_EVENT_BUTTON:
+        remapper_usb_hid_pico_debug_printf(
+            "[HID] button=%u pressed=%u\r\n",
+            (unsigned)event->data.button.button,
+            event->data.button.pressed ? 1u : 0u);
+        break;
+    case REMAPPER_MOUSE_EVENT_MOVE:
+        remapper_usb_hid_pico_debug_printf(
+            "[HID] move dx=%d dy=%d\r\n",
+            event->data.move.dx,
+            event->data.move.dy);
+        break;
+    case REMAPPER_MOUSE_EVENT_WHEEL:
+        remapper_usb_hid_pico_debug_printf(
+            "[HID] wheel v=%d h=%d\r\n",
+            event->data.wheel.vertical,
+            event->data.wheel.horizontal);
+        break;
+    }
+}
+
 static void service_usb_mouse(
     remapper_hid_aggregator_t *aggregator,
     uint8_t *last_buttons,
@@ -74,6 +184,14 @@ static void service_usb_mouse(
 
     if (!remapper_usb_hid_pico_send_mouse(&report)) return;
 
+    remapper_usb_hid_pico_debug_printf(
+        "[USB] mouse buttons=0x%02x dx=%d dy=%d wheel=%d pan=%d\r\n",
+        output.mouse_buttons,
+        dx,
+        dy,
+        wheel,
+        pan);
+
     (void)remapper_hid_aggregator_consume_relative(
         aggregator,
         dx,
@@ -86,9 +204,6 @@ static void service_usb_mouse(
 
 int main(void)
 {
-    stdio_init_all();
-    printf("[BOOT] REMAPPER-G06 0.6.1-g06-uart\n");
-
     remapper_interaction_state_t interaction;
     remapper_display_hal_t display;
     remapper_hid_aggregator_t hid_aggregator;
@@ -101,6 +216,16 @@ int main(void)
     if (!remapper_usb_hid_pico_init()) {
         while (true) tight_loop_contents();
     }
+    remapper_usb_hid_pico_debug_printf(
+        "[BOOT] %s %s usb_debug_cdc=%u\r\n",
+        REMAPPER_GATE_NAME,
+        REMAPPER_FIRMWARE_VERSION,
+#if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
+        1u
+#else
+        0u
+#endif
+    );
 
     remapper_interaction_init(&interaction);
     remapper_hid_aggregator_init(&hid_aggregator);
@@ -122,11 +247,13 @@ int main(void)
 
         const bool usb_mounted = remapper_usb_hid_pico_mounted();
         if (usb_mounted != usb_was_mounted) {
+            remapper_usb_hid_pico_debug_printf("[USB] mounted=%u\r\n", usb_mounted ? 1u : 0u);
             last_mouse_buttons_valid = false;
             usb_was_mounted = usb_mounted;
         }
 
         if (remapper_bt_runtime_take_overflow()) {
+            remapper_usb_hid_pico_debug_printf("[QUEUE] overflow: releasing BLE mouse source\r\n");
             (void)remapper_hid_aggregator_release_source(
                 &hid_aggregator,
                 ble_mouse_source);
@@ -135,6 +262,15 @@ int main(void)
 
         remapper_bt_runtime_message_t runtime_message;
         while (remapper_bt_runtime_poll(&runtime_message)) {
+            if (runtime_message.channel == REMAPPER_BLE_HOGP_RUNTIME_CHANNEL &&
+                runtime_message.type == REMAPPER_BLE_HOGP_MESSAGE_DEBUG &&
+                runtime_message.length == sizeof(remapper_ble_hogp_debug_record_t)) {
+                remapper_ble_hogp_debug_record_t record;
+                memcpy(&record, runtime_message.payload, sizeof(record));
+                log_ble_debug_record(&record);
+                continue;
+            }
+
             remapper_ble_hogp_event_t ble_event;
             if (!remapper_ble_hogp_decode_runtime_message(
                     &runtime_message,
@@ -144,15 +280,18 @@ int main(void)
 
             switch (ble_event.type) {
             case REMAPPER_BLE_HOGP_EVENT_CONNECTED:
+                remapper_usb_hid_pico_debug_printf("[HOGP] canonical mouse connected\r\n");
                 last_mouse_buttons_valid = false;
                 break;
             case REMAPPER_BLE_HOGP_EVENT_DISCONNECTED:
+                remapper_usb_hid_pico_debug_printf("[HOGP] canonical mouse disconnected\r\n");
                 (void)remapper_hid_aggregator_release_source(
                     &hid_aggregator,
                     ble_mouse_source);
                 last_mouse_buttons_valid = false;
                 break;
             case REMAPPER_BLE_HOGP_EVENT_MOUSE:
+                log_mouse_event(&ble_event.mouse);
                 (void)remapper_hid_aggregator_apply_mouse(
                     &hid_aggregator,
                     &ble_event.mouse);

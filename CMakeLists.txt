@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 option(REMAPPER_BUILD_PICO "Build the Raspberry Pi Pico 2 W firmware" OFF)
 option(REMAPPER_BUILD_TESTS "Build host-side architecture, UX, USB, HID and BLE-parser tests" ON)
+option(REMAPPER_USB_DEBUG_CDC "Add a diagnostic USB CDC serial interface" OFF)
 
 if(REMAPPER_BUILD_PICO)
     set(PICO_BOARD "pico2_w" CACHE STRING "Raspberry Pi Pico SDK board target")
@@ -66,6 +67,11 @@ if(REMAPPER_BUILD_PICO)
 
     target_sources(ble_hogp PRIVATE src/ble_hogp/ble_hogp_pico.c)
     target_link_libraries(ble_hogp PRIVATE pico_stdlib pico_btstack_ble)
+
+    if(REMAPPER_USB_DEBUG_CDC)
+        target_compile_definitions(usb_hid PUBLIC REMAPPER_USB_DEBUG_CDC=1)
+        target_compile_definitions(ble_hogp PRIVATE REMAPPER_USB_DEBUG_CDC=1)
+    endif()
 endif()
 
 if(REMAPPER_BUILD_TESTS)
@@ -108,14 +114,19 @@ endif()
 if(REMAPPER_BUILD_PICO)
     add_executable(picow_remapper src/app/main.c)
     target_link_libraries(picow_remapper PRIVATE pico_stdlib app usb_hid)
+    if(REMAPPER_USB_DEBUG_CDC)
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.2-g06-debug-cdc")
+    else()
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.0-g06")
+    endif()
     target_compile_definitions(
         picow_remapper
         PRIVATE
             REMAPPER_GATE_NAME="REMAPPER-G06"
-            REMAPPER_FIRMWARE_VERSION="0.6.1-g06-uart"
+            REMAPPER_FIRMWARE_VERSION="${REMAPPER_FIRMWARE_VERSION_VALUE}"
             CYW43_LWIP=0
     )
     pico_enable_stdio_usb(picow_remapper 0)
-    pico_enable_stdio_uart(picow_remapper 1)
+    pico_enable_stdio_uart(picow_remapper 0)
     pico_add_extra_outputs(picow_remapper)
 endif()

@@ -20,7 +20,37 @@ typedef enum {
     REMAPPER_BLE_HOGP_MESSAGE_CONNECTED = 1,
     REMAPPER_BLE_HOGP_MESSAGE_DISCONNECTED = 2,
     REMAPPER_BLE_HOGP_MESSAGE_MOUSE = 3,
+    REMAPPER_BLE_HOGP_MESSAGE_DEBUG = 4,
 } remapper_ble_hogp_message_type_t;
+
+typedef enum {
+    REMAPPER_BLE_HOGP_DEBUG_SESSION_SETUP = 1,
+    REMAPPER_BLE_HOGP_DEBUG_STACK_READY,
+    REMAPPER_BLE_HOGP_DEBUG_SCAN_STARTED,
+    REMAPPER_BLE_HOGP_DEBUG_HID_ADVERTISEMENT,
+    REMAPPER_BLE_HOGP_DEBUG_CONNECTING,
+    REMAPPER_BLE_HOGP_DEBUG_LE_CONNECTED,
+    REMAPPER_BLE_HOGP_DEBUG_PAIRING_STARTED,
+    REMAPPER_BLE_HOGP_DEBUG_PAIRING_COMPLETE,
+    REMAPPER_BLE_HOGP_DEBUG_HIDS_CONNECTING,
+    REMAPPER_BLE_HOGP_DEBUG_HIDS_CONNECTED,
+    REMAPPER_BLE_HOGP_DEBUG_REPORT_MAP,
+    REMAPPER_BLE_HOGP_DEBUG_PARSER_READY,
+    REMAPPER_BLE_HOGP_DEBUG_REPORT_RX,
+    REMAPPER_BLE_HOGP_DEBUG_DISCONNECTED,
+    REMAPPER_BLE_HOGP_DEBUG_RESCAN,
+    REMAPPER_BLE_HOGP_DEBUG_ERROR,
+} remapper_ble_hogp_debug_code_t;
+
+typedef struct {
+    uint8_t code;
+    uint8_t status;
+    uint8_t report_id;
+    uint8_t reserved;
+    int32_t a;
+    int32_t b;
+    int32_t c;
+} remapper_ble_hogp_debug_record_t;
 
 typedef enum {
     REMAPPER_BLE_HOGP_FIELD_BUTTON = 0,
@@ -89,7 +119,6 @@ bool remapper_ble_hogp_decode_runtime_message(
     const remapper_bt_runtime_message_t *message,
     remapper_ble_hogp_event_t *event);
 
-/* Pico implementation: scan, pair and connect one BLE HOGP mouse. */
 bool remapper_ble_hogp_start(void);
 
 #ifdef __cplusplus
