@@ -12,6 +12,8 @@ Every screen is specified against a fixed text grid:
 
 Exact screen layouts must be reviewable in a monospaced editor before implementation.
 
+The 9x21 model is semantic. Pixel Y positions may be redistributed inside the 240 px panel as defined below; row identity, text contents, selection semantics and maximum 21-character width remain unchanged.
+
 ## Backgrounds
 
 `LEARN THE KEYS` uses the existing very dark magenta background across the entire display.
@@ -21,7 +23,47 @@ Every other screen has two visual regions:
 - main region: black background;
 - hint region: the same very dark magenta used by `LEARN THE KEYS`.
 
-There is always one text-empty row between main content and hints. The horizontal background boundary crosses the vertical midpoint of that empty row.
+There is always one semantic text-empty separator row between main content and hints. The pixel boundary between black and dark magenta is layout-dependent and is defined by the number of hint lines rather than by the midpoint of that semantic separator row.
+
+## Vertical pixel distribution
+
+The canonical glyph is 14 px high. The panel is 240 px high and the title starts at Y=8.
+
+### Learn The Keys
+
+`LEARN THE KEYS` is a single full-magenta region and uses all nine semantic rows with this vertical distribution:
+
+- top of panel to title: 8 px;
+- title to `UP/DOWN: SELECT`: 17 px;
+- every following inter-line gap through `RELEASE RUNS ACTION`: 11 px;
+- bottom of `RELEASE RUNS ACTION` to bottom of panel: 12 px.
+
+Rendered text Y positions are therefore: `8, 39, 64, 89, 114, 139, 164, 189, 214`.
+
+### Standard two-region screens
+
+The title remains at Y=8. Main-body slots and hint slots use 12 px inter-line gaps. The empty semantic separator row remains empty even though the physical background boundary is no longer tied to its midpoint.
+
+For every standard layout:
+
+- title to first body line: 17 px;
+- body-line to body-line: 12 px;
+- last available body slot to black/magenta boundary: 20 px;
+- boundary to first hint line: 11 px;
+- hint-line to hint-line: 12 px;
+- last hint line to bottom of panel: 12 px.
+
+The three supported layouts are:
+
+| Body slots | Hint lines | Black region | Magenta region | Boundary Y |
+| ---: | ---: | ---: | ---: | ---: |
+| 6 | 1 | 203 px | 37 px | 203 |
+| 5 | 2 | 177 px | 63 px | 177 |
+| 4 | 3 | 151 px | 89 px | 151 |
+
+Body-slot Y positions are `39, 65, 91, 117, 143, 169` as applicable. Hint-slot Y positions are anchored from the bottom: row 6 = 162, row 7 = 188, row 8 = 214 as applicable.
+
+Missing body text does not collapse the geometry. Empty body slots still reserve the same vertical space so screens with the same number of hint lines share the same background boundary and optical layout.
 
 ## Text color semantics
 
