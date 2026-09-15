@@ -39,8 +39,9 @@ function(remapper_define_modules)
     remapper_add_module(remap INTERFACE)
     target_link_libraries(remap INTERFACE domain)
 
-    remapper_add_module(hid_aggregator INTERFACE)
-    target_link_libraries(hid_aggregator INTERFACE domain)
+    remapper_add_module(hid_aggregator STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/hid_aggregator/hid_aggregator.c)
+    target_include_directories(hid_aggregator PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/hid_aggregator/include)
+    target_link_libraries(hid_aggregator PUBLIC domain)
 
     remapper_add_module(usb_hid STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/usb_hid/usb_hid.c)
     target_include_directories(usb_hid PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/usb_hid/include)

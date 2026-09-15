@@ -8,7 +8,7 @@ on:
 
 jobs:
   host:
-    name: host-ux-usb-architecture
+    name: host-ux-usb-hid-architecture
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -21,7 +21,7 @@ jobs:
         run: ctest --test-dir build-host --output-on-failure
 
   pico2w:
-    name: pico2-w-g04
+    name: pico2-w-g05
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -36,15 +36,15 @@ jobs:
           git clone --depth 1 --branch 2.2.0 https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
           git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1
           echo "PICO_SDK_PATH=$RUNNER_TEMP/pico-sdk" >> "$GITHUB_ENV"
-      - name: Configure Pico 2 W G04
+      - name: Configure Pico 2 W G05
         run: cmake -S . -B build-pico -DREMAPPER_BUILD_PICO=ON -DREMAPPER_BUILD_TESTS=OFF -DPICO_BOARD=pico2_w -DCMAKE_BUILD_TYPE=Release
-      - name: Build Pico 2 W G04
+      - name: Build Pico 2 W G05
         run: cmake --build build-pico --parallel
       - name: Verify UF2
         run: test -s build-pico/picow_remapper.uf2
-      - name: Upload G04 UF2
+      - name: Upload G05 UF2
         uses: actions/upload-artifact@v4
         with:
-          name: picow-remapper-g04-pico2w
+          name: picow-remapper-g05-pico2w
           path: build-pico/picow_remapper.uf2
           if-no-files-found: error
