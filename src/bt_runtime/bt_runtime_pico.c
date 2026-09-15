@@ -1,7 +1,7 @@
 #include "remapper/bt_runtime/bt_runtime.h"
 
 #include "btstack.h"
-#include "g06_hog_host.gatt.h"
+#include "g06_hog_host.h"
 #include "pico/cyw43_arch.h"
 #include "pico/multicore.h"
 
