@@ -60,7 +60,7 @@ def fail(message: str) -> None:
 
 def parse_deps(cmake_text: str, target: str) -> set[str]:
     match = re.search(
-        rf"target_link_libraries\(\s*{re.escape(target)}\s+INTERFACE\s+(.*?)\)",
+        rf"target_link_libraries\(\s*{re.escape(target)}\s+(?:INTERFACE|PUBLIC)\s+(.*?)\)",
         cmake_text,
         flags=re.DOTALL,
     )
@@ -73,8 +73,9 @@ def main() -> None:
     module_text = MODULE_FILE.read_text(encoding="utf-8")
     root_cmake = ROOT_CMAKE.read_text(encoding="utf-8")
 
-    declared = set(re.findall(r"remapper_add_module\(([^)]+)\)", module_text))
-    declared.discard("name")
+    declared = set(
+        re.findall(r"remapper_add_module\(\s*([a-z][a-z0-9_]*)\b", module_text)
+    )
     if declared != EXPECTED_MODULES:
         fail(f"canonical CMake module set mismatch: {sorted(declared)}")
 
@@ -85,12 +86,18 @@ def main() -> None:
 
     for target in {"domain", "renderer", "hat", "usb_hid", "bt_runtime", "storage_pico"}:
         if parse_deps(module_text, target):
-            fail(f"{target} gained a dependency during G01 scaffold")
+            fail(f"{target} has a forbidden canonical dependency")
+
+    for target in ("ux_model", "interaction"):
+        if not re.search(rf"remapper_add_module\(\s*{target}\s+STATIC\b", module_text):
+            fail(f"{target} is not a compiled library in G02")
 
     if 'set(PICO_BOARD "pico2_w"' not in root_cmake:
         fail("canonical Pico board is not fixed to pico2_w")
     if "pico_add_extra_outputs(picow_remapper)" not in root_cmake:
         fail("Pico build does not generate UF2/extra outputs")
+    if 'REMAPPER_GATE_NAME="REMAPPER-G02"' not in root_cmake:
+        fail("firmware gate marker is not REMAPPER-G02")
 
     source_files = [
         path
@@ -114,7 +121,7 @@ def main() -> None:
     main_text = (ROOT / "src" / "app" / "main.c").read_text(encoding="utf-8").lower()
     for token in ("tinyusb", "tusb", "btstack", "cyw43", "st7789", "hid_host", "gpio_", "spi_"):
         if token in main_text:
-            fail(f"G01 boot scaffold contains later-gate behavior token: {token}")
+            fail(f"G02 boot scaffold contains later-gate behavior token: {token}")
 
 
 if __name__ == "__main__":
