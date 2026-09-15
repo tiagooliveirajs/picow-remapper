@@ -1,60 +1,48 @@
 name: Canonical Firmware CI
-
 on:
   push:
     branches:
       - main
       - "gate/**"
   pull_request:
-
 jobs:
   host:
-    name: host-ux-architecture
+    name: host-ux-renderer-architecture
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Configure host build
         run: cmake -S . -B build-host -DREMAPPER_BUILD_PICO=OFF -DREMAPPER_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug
-
       - name: Build host tests
         run: cmake --build build-host --parallel
-
       - name: Run host tests
         run: ctest --test-dir build-host --output-on-failure
-
   pico2w:
-    name: pico2-w-g02
+    name: pico2-w-g03
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Install ARM toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
-
       - name: Fetch Pico SDK 2.2.0
         shell: bash
         run: |
           git clone --depth 1 --branch 2.2.0 https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
           git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1
           echo "PICO_SDK_PATH=$RUNNER_TEMP/pico-sdk" >> "$GITHUB_ENV"
-
-      - name: Configure Pico 2 W G02
+      - name: Configure Pico 2 W G03
         run: cmake -S . -B build-pico -DREMAPPER_BUILD_PICO=ON -DREMAPPER_BUILD_TESTS=OFF -DPICO_BOARD=pico2_w -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build Pico 2 W G02
+      - name: Build Pico 2 W G03
         run: cmake --build build-pico --parallel
-
       - name: Verify UF2
         run: test -s build-pico/picow_remapper.uf2
-
-      - name: Upload G02 UF2
+      - name: Upload G03 UF2
         uses: actions/upload-artifact@v4
         with:
-          name: picow-remapper-g02-pico2w
+          name: picow-remapper-g03-pico2w
           path: build-pico/picow_remapper.uf2
           if-no-files-found: error
