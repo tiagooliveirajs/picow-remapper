@@ -18,7 +18,7 @@ bool remapper_bt_runtime_start(remapper_bt_runtime_session_setup_fn session_setu
      * The canonical G06 runtime uses pico_cyw43_arch_threadsafe_background.
      * Bluetooth/CYW43 callbacks therefore run from the SDK's low-priority
      * async-context IRQ and do not need a dedicated second core or a blocking
-     * btstack_run_loop_execute().
+     * application-owned Bluetooth run loop.
      *
      * Keeping cyw43_arch_init() on core 0 follows the Pico SDK Bluetooth
      * examples and avoids two failure modes seen in the earlier G06 runtime:
