@@ -53,12 +53,19 @@ if(REMAPPER_BUILD_PICO)
         bt_runtime
         PRIVATE
             pico_stdlib
-            pico_multicore
             pico_btstack_ble
             pico_btstack_cyw43
             pico_cyw43_arch_threadsafe_background
     )
-    target_compile_definitions(bt_runtime PUBLIC CYW43_LWIP=0)
+    # The background CYW43 transport may receive a burst of HCI packets in one
+    # low-priority IRQ. Bound each pass so USB/HAT/UI main-loop work cannot be
+    # starved during pairing, service discovery or report bursts.
+    target_compile_definitions(
+        bt_runtime
+        PUBLIC
+            CYW43_LWIP=0
+            PICO_BTSTACK_CYW43_MAX_HCI_PROCESS_LOOP_COUNT=8
+    )
     pico_btstack_make_gatt_header(
         bt_runtime
         PRIVATE
@@ -122,10 +129,10 @@ if(REMAPPER_BUILD_PICO)
     add_executable(picow_remapper src/app/main.c)
     target_link_libraries(picow_remapper PRIVATE pico_stdlib app usb_hid)
     if(REMAPPER_USB_DEBUG_CDC)
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.3-g06-debug-cdc")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.4-g06-debug-cdc")
         target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=1 CFG_TUD_CDC=1)
     else()
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.1-g06")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.2-g06")
         target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=0 CFG_TUD_CDC=0)
     endif()
     target_compile_definitions(
