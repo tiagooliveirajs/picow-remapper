@@ -246,6 +246,39 @@ void remapper_hid_aggregator_take_output(
     aggregator->pending_wheel_horizontal = 0;
 }
 
+static bool relative_component_can_consume(int32_t pending, int32_t consumed)
+{
+    if (pending == 0) return consumed == 0;
+    if (pending > 0) return consumed >= 0 && consumed <= pending;
+    return consumed <= 0 && consumed >= pending;
+}
+
+bool remapper_hid_aggregator_consume_relative(
+    remapper_hid_aggregator_t *aggregator,
+    int32_t dx,
+    int32_t dy,
+    int32_t wheel_vertical,
+    int32_t wheel_horizontal)
+{
+    if (aggregator == NULL) return false;
+    if (!relative_component_can_consume(aggregator->pending_dx, dx) ||
+        !relative_component_can_consume(aggregator->pending_dy, dy) ||
+        !relative_component_can_consume(
+            aggregator->pending_wheel_vertical,
+            wheel_vertical) ||
+        !relative_component_can_consume(
+            aggregator->pending_wheel_horizontal,
+            wheel_horizontal)) {
+        return false;
+    }
+
+    aggregator->pending_dx -= dx;
+    aggregator->pending_dy -= dy;
+    aggregator->pending_wheel_vertical -= wheel_vertical;
+    aggregator->pending_wheel_horizontal -= wheel_horizontal;
+    return true;
+}
+
 bool remapper_hid_output_mouse_button_is_down(
     const remapper_hid_output_state_t *state,
     remapper_mouse_button_t button)

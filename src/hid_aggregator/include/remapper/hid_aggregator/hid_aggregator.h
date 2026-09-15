@@ -63,10 +63,22 @@ void remapper_hid_aggregator_snapshot(
     const remapper_hid_aggregator_t *aggregator,
     remapper_hid_output_state_t *out_state);
 
-/* Return aggregate state and consume only relative motion/wheel deltas. */
+/* Return aggregate state and consume all relative motion/wheel deltas. */
 void remapper_hid_aggregator_take_output(
     remapper_hid_aggregator_t *aggregator,
     remapper_hid_output_state_t *out_state);
+
+/*
+ * Consume only the relative deltas that were successfully forwarded.
+ * Each consumed component must have the same sign as, and magnitude no
+ * greater than, the corresponding pending component.
+ */
+bool remapper_hid_aggregator_consume_relative(
+    remapper_hid_aggregator_t *aggregator,
+    int32_t dx,
+    int32_t dy,
+    int32_t wheel_vertical,
+    int32_t wheel_horizontal);
 
 bool remapper_hid_output_mouse_button_is_down(
     const remapper_hid_output_state_t *state,

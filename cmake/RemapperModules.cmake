@@ -46,10 +46,12 @@ function(remapper_define_modules)
     remapper_add_module(usb_hid STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/usb_hid/usb_hid.c)
     target_include_directories(usb_hid PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/usb_hid/include)
 
-    remapper_add_module(bt_runtime INTERFACE)
+    remapper_add_module(bt_runtime STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/bt_runtime/bt_runtime.c)
+    target_include_directories(bt_runtime PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/bt_runtime/include)
 
-    remapper_add_module(ble_hogp INTERFACE)
-    target_link_libraries(ble_hogp INTERFACE bt_runtime domain)
+    remapper_add_module(ble_hogp STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/ble_hogp/ble_hogp.c)
+    target_include_directories(ble_hogp PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/ble_hogp/include)
+    target_link_libraries(ble_hogp PUBLIC bt_runtime domain)
 
     remapper_add_module(classic_hid INTERFACE)
     target_link_libraries(classic_hid INTERFACE bt_runtime domain)
