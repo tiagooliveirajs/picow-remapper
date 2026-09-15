@@ -135,6 +135,22 @@ uint16_t remapper_renderer_background_rgb565(const remapper_ui_frame_t *frame, u
     return row >= frame->hint_start_row ? COLOR_DARK_MAGENTA : COLOR_BLACK;
 }
 
+static uint16_t standard_body_text_y(uint8_t row)
+{
+    const uint16_t first = (uint16_t)(
+        REMAPPER_RENDERER_TEXT_Y + REMAPPER_RENDERER_GLYPH_HEIGHT + REMAPPER_RENDERER_TITLE_BODY_GAP);
+    const uint16_t advance = (uint16_t)(REMAPPER_RENDERER_GLYPH_HEIGHT + REMAPPER_RENDERER_BODY_LINE_GAP);
+    return (uint16_t)(first + (uint16_t)(row - 1u) * advance);
+}
+
+static uint16_t standard_hint_text_y(uint8_t row)
+{
+    const uint16_t last = (uint16_t)(
+        REMAPPER_RENDERER_HEIGHT - REMAPPER_RENDERER_HINT_BOTTOM_GAP - REMAPPER_RENDERER_GLYPH_HEIGHT);
+    const uint16_t advance = (uint16_t)(REMAPPER_RENDERER_GLYPH_HEIGHT + REMAPPER_RENDERER_HINT_LINE_GAP);
+    return (uint16_t)(last - (uint16_t)(REMAPPER_RENDERER_TEXT_ROWS - 1u - row) * advance);
+}
+
 uint16_t remapper_renderer_separator_boundary_y(const remapper_ui_frame_t *frame)
 {
     if (frame == NULL || frame->learn_background || frame->hint_start_row == 0u ||
@@ -142,32 +158,39 @@ uint16_t remapper_renderer_separator_boundary_y(const remapper_ui_frame_t *frame
         return REMAPPER_RENDERER_HEIGHT;
     }
 
-    const uint16_t separator_row = (uint16_t)(frame->hint_start_row - 1u);
-    const uint16_t boundary = (uint16_t)(
-        REMAPPER_RENDERER_TEXT_Y +
-        separator_row * REMAPPER_RENDERER_LINE_ADVANCE +
-        REMAPPER_RENDERER_LINE_ADVANCE / 2u);
-    return boundary < REMAPPER_RENDERER_HEIGHT ? boundary : REMAPPER_RENDERER_HEIGHT;
+    const uint16_t first_hint_y = standard_hint_text_y(frame->hint_start_row);
+    if (first_hint_y <= REMAPPER_RENDERER_HINT_TOP_GAP) return 0u;
+    return (uint16_t)(first_hint_y - REMAPPER_RENDERER_HINT_TOP_GAP);
 }
 
 uint16_t remapper_renderer_text_y(const remapper_ui_frame_t *frame, uint8_t row)
 {
     if (row >= REMAPPER_RENDERER_TEXT_ROWS) return REMAPPER_RENDERER_HEIGHT;
 
-    const uint16_t base = (uint16_t)(REMAPPER_RENDERER_TEXT_Y + (uint16_t)row * REMAPPER_RENDERER_LINE_ADVANCE);
-    if (frame == NULL || frame->learn_background || row == 0u || frame->hint_start_row == 0u ||
-        frame->hint_start_row > REMAPPER_RENDERER_TEXT_ROWS) {
-        return base;
+    const uint16_t semantic_base = (uint16_t)(
+        REMAPPER_RENDERER_TEXT_Y + (uint16_t)row * REMAPPER_RENDERER_LINE_ADVANCE);
+    if (frame == NULL) return semantic_base;
+
+    if (frame->learn_background) {
+        if (row == 0u) return REMAPPER_RENDERER_TEXT_Y;
+        const uint16_t first = (uint16_t)(
+            REMAPPER_RENDERER_TEXT_Y + REMAPPER_RENDERER_GLYPH_HEIGHT + REMAPPER_RENDERER_TITLE_BODY_GAP);
+        const uint16_t advance = (uint16_t)(REMAPPER_RENDERER_GLYPH_HEIGHT + REMAPPER_RENDERER_LEARN_LINE_GAP);
+        return (uint16_t)(first + (uint16_t)(row - 1u) * advance);
+    }
+
+    if (row == 0u || frame->hint_start_row == 0u || frame->hint_start_row > REMAPPER_RENDERER_TEXT_ROWS) {
+        return semantic_base;
     }
 
     const uint8_t separator_row = (uint8_t)(frame->hint_start_row - 1u);
     if (row > 0u && row < separator_row) {
-        return (uint16_t)(base + REMAPPER_RENDERER_REGION_NUDGE);
+        return standard_body_text_y(row);
     }
     if (row >= frame->hint_start_row) {
-        return (uint16_t)(base - REMAPPER_RENDERER_REGION_NUDGE);
+        return standard_hint_text_y(row);
     }
-    return base;
+    return semantic_base;
 }
 
 static bool draw_cell(

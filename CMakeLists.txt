@@ -82,7 +82,7 @@ if(REMAPPER_BUILD_PICO)
         picow_remapper
         PRIVATE
             REMAPPER_GATE_NAME="REMAPPER-G04"
-            REMAPPER_FIRMWARE_VERSION="0.4.0-g04"
+            REMAPPER_FIRMWARE_VERSION="0.4.1-g04"
     )
     pico_enable_stdio_usb(picow_remapper 0)
     pico_enable_stdio_uart(picow_remapper 0)
