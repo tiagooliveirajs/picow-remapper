@@ -108,7 +108,7 @@ uint16_t remapper_renderer_separator_boundary_y(const remapper_ui_frame_t *frame
 {
     if (frame==NULL || frame->learn_background || frame->hint_start_row==0u || frame->hint_start_row>=REMAPPER_RENDERER_TEXT_ROWS) return REMAPPER_RENDERER_HEIGHT;
     const uint16_t separator_row=(uint16_t)(frame->hint_start_row-1u);
-    const uint16_t boundary=(uint16_t)(separator_row*REMAPPER_RENDERER_LINE_ADVANCE+REMAPPER_RENDERER_LINE_ADVANCE/2u);
+    const uint16_t boundary=(uint16_t)(REMAPPER_RENDERER_TEXT_Y+separator_row*REMAPPER_RENDERER_LINE_ADVANCE+REMAPPER_RENDERER_LINE_ADVANCE/2u);
     return boundary<REMAPPER_RENDERER_HEIGHT ? boundary : REMAPPER_RENDERER_HEIGHT;
 }
 
