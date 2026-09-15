@@ -23,6 +23,18 @@ Every other screen has two visual regions:
 
 There is always one text-empty row between main content and hints. The horizontal background boundary crosses the vertical midpoint of that empty row.
 
+## Optical vertical centering
+
+The 9x21 semantic grid remains unchanged, but standard two-region screens apply a small optical vertical offset inside each background region:
+
+- the title remains at its original rendered Y position;
+- non-title text in the black main region moves downward by 25% of the inter-line pixel gap;
+- hint text in the dark-magenta region moves upward by the same amount;
+- the empty separator row and the black/magenta background boundary do not move;
+- `LEARN THE KEYS`, which uses a single full-screen background, keeps the original row positions.
+
+With the canonical renderer geometry (`LINE_ADVANCE=27`, `GLYPH_HEIGHT=14`), the inter-line gap is 13 px and the integer optical offset is 3 px. This is a pixel-rendering refinement only; screen specifications remain 9 rows by 21 columns.
+
 ## Text color semantics
 
 Color expresses meaning and interaction state, not arbitrary per-screen styling.

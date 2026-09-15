@@ -16,6 +16,8 @@
 #define REMAPPER_RENDERER_LINE_ADVANCE 27u
 #define REMAPPER_RENDERER_TEXT_X 7u
 #define REMAPPER_RENDERER_TEXT_Y 8u
+#define REMAPPER_RENDERER_VERTICAL_GAP (REMAPPER_RENDERER_LINE_ADVANCE - REMAPPER_RENDERER_GLYPH_HEIGHT)
+#define REMAPPER_RENDERER_REGION_NUDGE (REMAPPER_RENDERER_VERTICAL_GAP / 4u)
 
 typedef enum {
     REMAPPER_UI_TONE_TITLE = 0,
@@ -48,6 +50,7 @@ bool remapper_ui_frame_set_tone_span(remapper_ui_frame_t *frame, uint8_t row, ui
 uint16_t remapper_renderer_tone_rgb565(remapper_ui_tone_t tone);
 uint16_t remapper_renderer_background_rgb565(const remapper_ui_frame_t *frame, uint8_t row);
 uint16_t remapper_renderer_separator_boundary_y(const remapper_ui_frame_t *frame);
+uint16_t remapper_renderer_text_y(const remapper_ui_frame_t *frame, uint8_t row);
 bool remapper_renderer_render(const remapper_display_hal_t *display, const remapper_ui_frame_t *frame);
 
 #endif
