@@ -9,15 +9,19 @@
 #define BLE_APPEARANCE_HID_GENERIC 960u
 #define BLE_APPEARANCE_HID_MOUSE 962u
 #define BLE_APPEARANCE_HID_LAST 1023u
+#define BLE_HOGP_VENDOR_SERVICE_MS 20u
 
 _Static_assert(
     sizeof(remapper_canonical_mouse_event_t) <=
         REMAPPER_BT_RUNTIME_MESSAGE_PAYLOAD_SIZE,
-    "canonical mouse event must fit the cross-core runtime message");
+    "canonical mouse event must fit the runtime message");
 _Static_assert(
     sizeof(remapper_ble_hogp_debug_record_t) <=
         REMAPPER_BT_RUNTIME_MESSAGE_PAYLOAD_SIZE,
-    "BLE debug record must fit the cross-core runtime message");
+    "BLE debug record must fit the runtime message");
+_Static_assert(
+    sizeof(remapper_ble_hogp_peer_t) <= REMAPPER_BT_RUNTIME_MESSAGE_PAYLOAD_SIZE,
+    "BLE peer identity must fit the runtime message");
 
 typedef enum {
     BLE_HOGP_STATE_WAITING_FOR_STACK = 0,
@@ -46,12 +50,29 @@ static ble_hogp_rejected_device_t g_rejected_devices[BLE_HOGP_REJECTED_DEVICE_CA
 static size_t g_rejected_next;
 static btstack_packet_callback_registration_t g_hci_registration;
 static btstack_packet_callback_registration_t g_sm_registration;
+static btstack_timer_source_t g_vendor_timer;
+static remapper_ble_hogp_vendor_backend_t g_vendor_backend;
+static bool g_vendor_registered;
 
 static void handle_gatt_client_event(
     uint8_t packet_type,
     uint16_t channel,
     uint8_t *packet,
     uint16_t size);
+
+bool remapper_ble_hogp_register_vendor_backend(
+    const remapper_ble_hogp_vendor_backend_t *backend)
+{
+    if (backend == NULL || g_vendor_registered ||
+        backend->input == NULL || backend->next_output == NULL ||
+        backend->output_result == NULL || backend->claims_button == NULL ||
+        backend->session == NULL) {
+        return false;
+    }
+    g_vendor_backend = *backend;
+    g_vendor_registered = true;
+    return true;
+}
 
 static void publish_debug(
     remapper_ble_hogp_debug_code_t code,
@@ -95,7 +116,19 @@ static bool publish_status(remapper_ble_hogp_message_type_t type)
         0u);
 }
 
-static bool publish_mouse_event(
+static bool publish_connected(void)
+{
+    remapper_ble_hogp_peer_t peer = {0};
+    peer.address_type = (uint8_t)g_remote_address_type;
+    memcpy(peer.address, g_remote_address, sizeof(peer.address));
+    return remapper_bt_runtime_publish(
+        REMAPPER_BLE_HOGP_RUNTIME_CHANNEL,
+        REMAPPER_BLE_HOGP_MESSAGE_CONNECTED,
+        &peer,
+        (uint16_t)sizeof(peer));
+}
+
+static bool publish_runtime_mouse_event(
     void *context,
     const remapper_canonical_mouse_event_t *event)
 {
@@ -105,6 +138,21 @@ static bool publish_mouse_event(
         REMAPPER_BLE_HOGP_MESSAGE_MOUSE,
         event,
         (uint16_t)sizeof(*event));
+}
+
+static bool publish_mouse_event(
+    void *context,
+    const remapper_canonical_mouse_event_t *event)
+{
+    (void)context;
+    if (event != NULL && event->type == REMAPPER_MOUSE_EVENT_BUTTON &&
+        g_vendor_registered &&
+        g_vendor_backend.claims_button(
+            g_vendor_backend.context,
+            event->data.button.button)) {
+        return true;
+    }
+    return publish_runtime_mouse_event(NULL, event);
 }
 
 static bool advertisement_has_hid_service(const uint8_t *packet)
@@ -221,6 +269,47 @@ static void connect_hid_service(void)
     }
 }
 
+static void service_vendor_output(void)
+{
+    if (!g_vendor_registered || g_state != BLE_HOGP_STATE_READY || g_hids_cid == 0u) {
+        return;
+    }
+
+    uint8_t report_id = 0u;
+    uint8_t payload[REMAPPER_BLE_HOGP_VENDOR_OUTPUT_MAX] = {0};
+    uint16_t payload_len = 0u;
+    if (!g_vendor_backend.next_output(
+            g_vendor_backend.context,
+            &report_id,
+            payload,
+            &payload_len,
+            (uint16_t)sizeof(payload))) {
+        return;
+    }
+
+    const bool valid = report_id != 0u && payload_len > 0u &&
+        payload_len <= sizeof(payload);
+    const uint8_t status = valid
+        ? hids_client_send_write_report(
+            g_hids_cid,
+            report_id,
+            HID_REPORT_TYPE_OUTPUT,
+            payload,
+            (uint8_t)payload_len)
+        : ERROR_CODE_PARAMETER_OUT_OF_MANDATORY_RANGE;
+    g_vendor_backend.output_result(
+        g_vendor_backend.context,
+        status == ERROR_CODE_SUCCESS);
+}
+
+static void vendor_timer_handler(btstack_timer_source_t *timer)
+{
+    (void)timer;
+    service_vendor_output();
+    btstack_run_loop_set_timer(&g_vendor_timer, BLE_HOGP_VENDOR_SERVICE_MS);
+    btstack_run_loop_add_timer(&g_vendor_timer);
+}
+
 static void handle_gatt_client_event(
     uint8_t packet_type,
     uint16_t channel,
@@ -281,8 +370,6 @@ static void handle_gatt_client_event(
                 2,
                 (int32_t)descriptor_len,
                 0);
-            /* A valid HIDS report map with no Mouse collection is a keyboard/
-             * other HID. Remember it so scan does not pair it in a loop. */
             if (descriptor != NULL && descriptor_len > 0u) {
                 reject_address(g_remote_address, g_remote_address_type);
             }
@@ -298,7 +385,11 @@ static void handle_gatt_client_event(
             (int32_t)g_parser.report_count,
             0);
         g_state = BLE_HOGP_STATE_READY;
-        (void)publish_status(REMAPPER_BLE_HOGP_MESSAGE_CONNECTED);
+        if (g_vendor_registered) {
+            g_vendor_backend.session(g_vendor_backend.context, true);
+        }
+        (void)publish_connected();
+        service_vendor_output();
         break;
     }
 
@@ -313,6 +404,8 @@ static void handle_gatt_client_event(
         if (g_state != BLE_HOGP_STATE_READY) break;
         const uint8_t report_id =
             gattservice_subevent_hid_report_get_report_id(packet);
+        const uint8_t *raw_report =
+            gattservice_subevent_hid_report_get_report(packet);
         const uint16_t report_len =
             gattservice_subevent_hid_report_get_report_len(packet);
         publish_debug(
@@ -322,11 +415,43 @@ static void handle_gatt_client_event(
             (int32_t)report_len,
             0,
             0);
-        if (!remapper_ble_hogp_parser_parse_report(
+
+        const uint8_t *payload = NULL;
+        size_t payload_len = 0u;
+        if (!remapper_ble_hogp_parser_normalize_report(
                 &g_parser,
                 report_id,
-                gattservice_subevent_hid_report_get_report(packet),
+                raw_report,
                 report_len,
+                &payload,
+                &payload_len)) {
+            publish_debug(
+                REMAPPER_BLE_HOGP_DEBUG_ERROR,
+                0u,
+                report_id,
+                3,
+                (int32_t)report_len,
+                1);
+            disconnect_and_rescan();
+            break;
+        }
+
+        bool consumed = false;
+        if (g_vendor_registered) {
+            consumed = g_vendor_backend.input(
+                g_vendor_backend.context,
+                remapper_hid_source_make(REMAPPER_HID_SOURCE_MOUSE, 1u),
+                report_id,
+                payload,
+                payload_len,
+                publish_runtime_mouse_event,
+                NULL);
+        }
+        if (!consumed && !remapper_ble_hogp_parser_parse_report(
+                &g_parser,
+                report_id,
+                payload,
+                payload_len,
                 publish_mouse_event,
                 NULL)) {
             publish_debug(
@@ -338,6 +463,7 @@ static void handle_gatt_client_event(
                 0);
             disconnect_and_rescan();
         }
+        service_vendor_output();
         break;
     }
 
@@ -384,9 +510,7 @@ static void hci_packet_handler(
             (int32_t)appearance,
             0);
 
-        if (address_is_rejected(candidate_address, candidate_type)) {
-            break;
-        }
+        if (address_is_rejected(candidate_address, candidate_type)) break;
         if (appearance_is_explicit_non_mouse_hid(appearance)) {
             reject_address(candidate_address, candidate_type);
             publish_debug(
@@ -460,6 +584,9 @@ static void hci_packet_handler(
             (int32_t)g_connection_handle,
             0,
             0);
+        if (was_ready && g_vendor_registered) {
+            g_vendor_backend.session(g_vendor_backend.context, false);
+        }
         g_connection_handle = HCI_CON_HANDLE_INVALID;
         g_hids_cid = 0u;
         memset(&g_parser, 0, sizeof(g_parser));
@@ -558,6 +685,10 @@ static void ble_hogp_session_setup(void)
 
     g_sm_registration.callback = &sm_packet_handler;
     sm_add_event_handler(&g_sm_registration);
+
+    btstack_run_loop_set_timer_handler(&g_vendor_timer, vendor_timer_handler);
+    btstack_run_loop_set_timer(&g_vendor_timer, BLE_HOGP_VENDOR_SERVICE_MS);
+    btstack_run_loop_add_timer(&g_vendor_timer);
 }
 
 bool remapper_ble_hogp_start(void)

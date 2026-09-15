@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 option(REMAPPER_BUILD_PICO "Build the Raspberry Pi Pico 2 W firmware" OFF)
-option(REMAPPER_BUILD_TESTS "Build host-side architecture, UX, USB, HID and BLE-parser tests" ON)
+option(REMAPPER_BUILD_TESTS "Build host-side architecture, UX, USB, HID and Bluetooth tests" ON)
 option(REMAPPER_USB_DEBUG_CDC "Add a diagnostic USB CDC serial interface" OFF)
 
 if(REMAPPER_BUILD_PICO)
@@ -33,17 +33,19 @@ endif()
 include(cmake/RemapperModules.cmake)
 remapper_define_modules()
 
-# Keep BTstack/HIDS framing outside the descriptor-driven canonical parser.
-# The original parser implementation is compiled under an internal symbol;
-# ble_hogp_framing.c owns the public entry point and removes a duplicated
-# Report ID only when the Report Map proves the payload is exactly one byte
-# longer than expected.
-target_sources(ble_hogp PRIVATE src/ble_hogp/ble_hogp_framing.c)
+# Keep BTstack/HIDS framing and G07 runtime-message evolution outside the
+# descriptor-driven canonical parser implementation.
+target_sources(
+    ble_hogp
+    PRIVATE
+        src/ble_hogp/ble_hogp_framing.c
+        src/ble_hogp/ble_hogp_runtime_g07.c
+)
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/cmake/../src/ble_hogp/ble_hogp.c"
     PROPERTIES
         COMPILE_DEFINITIONS
-            "remapper_ble_hogp_parser_parse_report=remapper_ble_hogp_parser_parse_report_payload"
+            "remapper_ble_hogp_parser_parse_report=remapper_ble_hogp_parser_parse_report_payload;remapper_ble_hogp_decode_runtime_message=remapper_ble_hogp_decode_runtime_message_g06"
 )
 
 if(REMAPPER_BUILD_PICO)
@@ -70,9 +72,6 @@ if(REMAPPER_BUILD_PICO)
             pico_btstack_cyw43
             pico_cyw43_arch_threadsafe_background
     )
-    # The background CYW43 transport may receive a burst of HCI packets in one
-    # low-priority IRQ. Bound each pass so USB/HAT/UI main-loop work cannot be
-    # starved during pairing, service discovery or report bursts.
     target_compile_definitions(
         bt_runtime
         PUBLIC
@@ -88,9 +87,13 @@ if(REMAPPER_BUILD_PICO)
     target_sources(ble_hogp PRIVATE src/ble_hogp/ble_hogp_pico.c)
     target_link_libraries(ble_hogp PRIVATE pico_stdlib pico_btstack_ble)
 
+    target_sources(logitech_hidpp PRIVATE src/logitech_hidpp/logitech_hidpp_pico.c)
+    target_link_libraries(logitech_hidpp PRIVATE ble_hogp pico_stdlib)
+
+    target_compile_definitions(storage_pico PRIVATE REMAPPER_PICO_STORAGE=1)
+    target_link_libraries(storage_pico PRIVATE pico_stdlib hardware_flash pico_flash)
+
     if(REMAPPER_USB_DEBUG_CDC)
-        # Force CDC into both our descriptor translation unit and TinyUSB's
-        # interface sources. The normal build remains exactly two HID classes.
         target_compile_definitions(usb_hid PUBLIC REMAPPER_USB_DEBUG_CDC=1 CFG_TUD_CDC=1)
         target_compile_definitions(ble_hogp PRIVATE REMAPPER_USB_DEBUG_CDC=1)
         if(TARGET tinyusb_device_base)
@@ -133,6 +136,13 @@ if(REMAPPER_BUILD_TESTS)
     target_link_libraries(test_g06_hids_framing PRIVATE ble_hogp)
     target_compile_options(test_g06_hids_framing PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+    add_executable(test_g07_profiles_remap_hidpp tests/test_g07_profiles_remap_hidpp.c)
+    target_link_libraries(
+        test_g07_profiles_remap_hidpp
+        PRIVATE profiles remap logitech_hidpp hid_aggregator
+    )
+    target_compile_options(test_g07_profiles_remap_hidpp PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
     add_test(NAME scaffold_contract COMMAND test_scaffold)
     add_test(NAME ux_interaction_contract COMMAND test_ux_interaction)
     add_test(NAME g03_renderer_hat_contract COMMAND test_g03_ui)
@@ -140,6 +150,7 @@ if(REMAPPER_BUILD_TESTS)
     add_test(NAME g05_canonical_hid_ownership COMMAND test_g05_hid_ownership)
     add_test(NAME g06_ble_mouse_passthrough COMMAND test_g06_ble_mouse)
     add_test(NAME g06_btstack_hids_framing COMMAND test_g06_hids_framing)
+    add_test(NAME g07_profiles_remap_hidpp COMMAND test_g07_profiles_remap_hidpp)
     add_test(NAME architecture_boundaries COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_architecture.py)
 endif()
 
@@ -147,16 +158,16 @@ if(REMAPPER_BUILD_PICO)
     add_executable(picow_remapper src/app/main.c)
     target_link_libraries(picow_remapper PRIVATE pico_stdlib app usb_hid)
     if(REMAPPER_USB_DEBUG_CDC)
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.5-g06-debug-cdc")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.7.0-g07-debug-cdc")
         target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=1 CFG_TUD_CDC=1)
     else()
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.3-g06")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.7.0-g07")
         target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=0 CFG_TUD_CDC=0)
     endif()
     target_compile_definitions(
         picow_remapper
         PRIVATE
-            REMAPPER_GATE_NAME="REMAPPER-G06"
+            REMAPPER_GATE_NAME="REMAPPER-G07"
             REMAPPER_FIRMWARE_VERSION="${REMAPPER_FIRMWARE_VERSION_VALUE}"
             CYW43_LWIP=0
     )

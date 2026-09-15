@@ -33,11 +33,13 @@ function(remapper_define_modules)
     remapper_add_module(device_registry INTERFACE)
     target_link_libraries(device_registry INTERFACE domain)
 
-    remapper_add_module(profiles INTERFACE)
-    target_link_libraries(profiles INTERFACE domain)
+    remapper_add_module(profiles STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/profiles/profiles.c)
+    target_include_directories(profiles PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/profiles/include)
+    target_link_libraries(profiles PUBLIC domain)
 
-    remapper_add_module(remap INTERFACE)
-    target_link_libraries(remap INTERFACE domain)
+    remapper_add_module(remap STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/remap/remap.c)
+    target_include_directories(remap PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/remap/include)
+    target_link_libraries(remap PUBLIC domain)
 
     remapper_add_module(hid_aggregator STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/hid_aggregator/hid_aggregator.c)
     target_include_directories(hid_aggregator PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/hid_aggregator/include)
@@ -56,13 +58,15 @@ function(remapper_define_modules)
     remapper_add_module(classic_hid INTERFACE)
     target_link_libraries(classic_hid INTERFACE bt_runtime domain)
 
-    remapper_add_module(logitech_hidpp INTERFACE)
-    target_link_libraries(logitech_hidpp INTERFACE domain)
+    remapper_add_module(logitech_hidpp STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/logitech_hidpp/logitech_hidpp.c)
+    target_include_directories(logitech_hidpp PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/logitech_hidpp/include)
+    target_link_libraries(logitech_hidpp PUBLIC domain)
 
     remapper_add_module(connection_coordinator INTERFACE)
     target_link_libraries(connection_coordinator INTERFACE device_registry domain)
 
-    remapper_add_module(storage_pico INTERFACE)
+    remapper_add_module(storage_pico STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/storage_pico/storage_pico.c)
+    target_include_directories(storage_pico PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/storage_pico/include)
 
     remapper_add_module(app STATIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/app/ui_projection.c)
     target_include_directories(app PUBLIC ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/app/include)
