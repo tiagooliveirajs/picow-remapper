@@ -107,13 +107,15 @@ def main() -> None:
         "src/bt_runtime/bt_runtime_pico.c",
         "src/ble_hogp/ble_hogp_pico.c",
         "tinyusb_device",
-        "pico_multicore",
         "pico_btstack_ble",
         "pico_btstack_cyw43",
         "pico_cyw43_arch_threadsafe_background",
+        "PICO_BTSTACK_CYW43_MAX_HCI_PROCESS_LOOP_COUNT=8",
     ):
         if token not in root_cmake:
             fail(f"G06 Pico composition is missing {token}")
+    if "pico_multicore" in root_cmake:
+        fail("G06 Bluetooth runtime must not depend on pico_multicore")
 
     if "CFG_TUD_CDC=1" not in root_cmake or "tinyusb_device_base" not in root_cmake:
         fail("G06 debug CDC is not forced into the TinyUSB interface sources")
@@ -169,9 +171,12 @@ def main() -> None:
     for token in ("remapper/domain", "renderer", "st7789", "remapper/hat", "usb_hid", "tud_"):
         if token in bt_runtime_text:
             fail(f"bt_runtime crosses a product/UI/USB boundary: {token}")
-    for token in ("cyw43_arch_init", "hci_power_control", "btstack_run_loop_execute", "multicore_launch_core1"):
+    for token in ("cyw43_arch_init", "hci_power_control"):
         if token not in bt_runtime_text:
             fail(f"bt_runtime does not own required lifecycle primitive: {token}")
+    for token in ("multicore_launch_core1", "btstack_run_loop_execute"):
+        if token in bt_runtime_text:
+            fail(f"G06 background Bluetooth runtime must not use {token}")
 
     ble_text = "\n".join(
         path.read_text(encoding="utf-8")
