@@ -8,6 +8,8 @@ MODULE_FILE = ROOT / "cmake" / "RemapperModules.cmake"
 ROOT_CMAKE = ROOT / "CMakeLists.txt"
 SRC = ROOT / "src"
 USB_SRC = SRC / "usb_hid"
+BT_RUNTIME_SRC = SRC / "bt_runtime"
+BLE_HOGP_SRC = SRC / "ble_hogp"
 DOMAIN_HID = SRC / "domain" / "include" / "remapper" / "domain" / "hid.h"
 AGG_SRC = SRC / "hid_aggregator"
 
@@ -50,6 +52,10 @@ def parse_deps(cmake_text: str, target: str) -> set[str]:
     return set(re.findall(r"\b[a-z][a-z0-9_]*\b", match.group(1)))
 
 
+def under(path: Path, root: Path) -> bool:
+    return path == root or path.is_relative_to(root)
+
+
 def main() -> None:
     module_text = MODULE_FILE.read_text(encoding="utf-8")
     root_cmake = ROOT_CMAKE.read_text(encoding="utf-8")
@@ -67,31 +73,52 @@ def main() -> None:
         if parse_deps(module_text, target):
             fail(f"{target} has a forbidden canonical dependency")
 
-    for target in ("ux_model", "interaction", "renderer", "hat", "hid_aggregator", "usb_hid", "app"):
+    for target in (
+        "ux_model", "interaction", "renderer", "hat", "hid_aggregator", "usb_hid",
+        "bt_runtime", "ble_hogp", "app",
+    ):
         if not re.search(rf"remapper_add_module\(\s*{target}\s+STATIC\b", module_text):
-            fail(f"{target} is not a compiled library in G05")
+            fail(f"{target} is not a compiled library in G06")
 
     if not DOMAIN_HID.is_file():
-        fail("G05 canonical HID domain header is missing")
+        fail("canonical HID domain header is missing")
     if not (AGG_SRC / "hid_aggregator.c").is_file():
-        fail("G05 HID ownership aggregator implementation is missing")
-    if not (AGG_SRC / "include" / "remapper" / "hid_aggregator" / "hid_aggregator.h").is_file():
-        fail("G05 HID ownership aggregator public header is missing")
+        fail("HID ownership aggregator implementation is missing")
+    if not (BT_RUNTIME_SRC / "bt_runtime.c").is_file():
+        fail("G06 typed Bluetooth runtime queue is missing")
+    if not (BT_RUNTIME_SRC / "bt_runtime_pico.c").is_file():
+        fail("G06 Pico BTstack runtime owner is missing")
+    if not (BLE_HOGP_SRC / "ble_hogp.c").is_file():
+        fail("G06 host-testable HOGP Report Map parser is missing")
+    if not (BLE_HOGP_SRC / "ble_hogp_pico.c").is_file():
+        fail("G06 Pico HOGP adapter is missing")
 
     if 'set(PICO_BOARD "pico2_w"' not in root_cmake:
         fail("canonical Pico board is not fixed to pico2_w")
     if "pico_add_extra_outputs(picow_remapper)" not in root_cmake:
         fail("Pico build does not generate UF2/extra outputs")
-    if 'REMAPPER_GATE_NAME="REMAPPER-G05"' not in root_cmake:
-        fail("firmware gate marker is not REMAPPER-G05")
-    if "src/renderer/st7789_pico.c" not in root_cmake:
-        fail("G05 regressed the ST7789 Pico display adapter")
-    if "src/hat/hat_pico.c" not in root_cmake:
-        fail("G05 regressed the Pico HAT GPIO adapter")
-    if "src/usb_hid/usb_hid_pico.c" not in root_cmake or "src/usb_hid/usb_descriptors.c" not in root_cmake:
-        fail("G05 regressed the fixed TinyUSB adapter/descriptors")
-    if "tinyusb_device" not in root_cmake:
-        fail("G05 usb_hid target is not linked to TinyUSB device support")
+    if 'REMAPPER_GATE_NAME="REMAPPER-G06"' not in root_cmake:
+        fail("firmware gate marker is not REMAPPER-G06")
+    for token in (
+        "src/renderer/st7789_pico.c",
+        "src/hat/hat_pico.c",
+        "src/usb_hid/usb_hid_pico.c",
+        "src/usb_hid/usb_descriptors.c",
+        "src/bt_runtime/bt_runtime_pico.c",
+        "src/ble_hogp/ble_hogp_pico.c",
+        "tinyusb_device",
+        "pico_btstack_ble",
+        "pico_btstack_cyw43",
+        "pico_cyw43_arch_threadsafe_background",
+        "PICO_BTSTACK_CYW43_MAX_HCI_PROCESS_LOOP_COUNT=8",
+    ):
+        if token not in root_cmake:
+            fail(f"G06 Pico composition is missing {token}")
+    if "pico_multicore" in root_cmake:
+        fail("G06 Bluetooth runtime must not depend on pico_multicore")
+
+    if "CFG_TUD_CDC=1" not in root_cmake or "tinyusb_device_base" not in root_cmake:
+        fail("G06 debug CDC is not forced into the TinyUSB interface sources")
 
     source_files = [
         path for path in SRC.rglob("*")
@@ -102,6 +129,7 @@ def main() -> None:
 
     for path in source_files:
         text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
         if include_c.search(text):
             fail(f"textual .c include is forbidden: {path.relative_to(ROOT)}")
         if "picow-mouse-remapper" in text:
@@ -110,10 +138,17 @@ def main() -> None:
             if macro.startswith(FORBIDDEN_MACRO_PREFIXES):
                 fail(f"macro interception is forbidden: {macro} in {path.relative_to(ROOT)}")
 
-        if not path.is_relative_to(USB_SRC):
-            lowered = text.lower()
+        if not under(path, USB_SRC):
             if '"tusb.h"' in lowered or "tud_hid_" in lowered or "tud_descriptor_" in lowered:
                 fail(f"TinyUSB leaked outside usb_hid: {path.relative_to(ROOT)}")
+
+        if not under(path, BT_RUNTIME_SRC) and not under(path, BLE_HOGP_SRC):
+            for token in (
+                '"btstack.h"', "hids_client_", "hci_power_control", "gap_start_scan",
+                "gap_connect(", "sm_request_pairing", "cyw43_arch_init", "multicore_launch_core1",
+            ):
+                if token in lowered:
+                    fail(f"Bluetooth runtime leaked outside bt_runtime/ble_hogp: {token} in {path.relative_to(ROOT)}")
 
     canonical_text = DOMAIN_HID.read_text(encoding="utf-8") + "\n" + "\n".join(
         path.read_text(encoding="utf-8")
@@ -126,7 +161,45 @@ def main() -> None:
         "hardware/spi", "pico/stdlib", "report_id", "descriptor_report", "remote_report",
     ):
         if token in canonical_lower:
-            fail(f"G05 canonical HID boundary contains forbidden transport/layout token: {token}")
+            fail(f"canonical HID boundary contains forbidden transport/layout token: {token}")
+
+    bt_runtime_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in BT_RUNTIME_SRC.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".c", ".h"}
+    ).lower()
+    for token in ("remapper/domain", "renderer", "st7789", "remapper/hat", "usb_hid", "tud_"):
+        if token in bt_runtime_text:
+            fail(f"bt_runtime crosses a product/UI/USB boundary: {token}")
+    for token in ("cyw43_arch_init", "hci_power_control"):
+        if token not in bt_runtime_text:
+            fail(f"bt_runtime does not own required lifecycle primitive: {token}")
+    for token in ("multicore_launch_core1", "btstack_run_loop_execute"):
+        if token in bt_runtime_text:
+            fail(f"G06 background Bluetooth runtime must not use {token}")
+
+    ble_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in BLE_HOGP_SRC.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".c", ".h"}
+    ).lower()
+    for token in ("tinyusb", "tud_", "renderer", "st7789", "remapper/hat"):
+        if token in ble_text:
+            fail(f"ble_hogp crosses a USB/UI boundary: {token}")
+    for token in ("hids_client_init", "hids_client_connect", "gap_start_scan", "parser_configure"):
+        if token not in ble_text:
+            fail(f"G06 BLE HOGP adapter is missing {token}")
+
+    ble_pico = (BLE_HOGP_SRC / "ble_hogp_pico.c").read_text(encoding="utf-8")
+    for token in (
+        "appearance_is_explicit_non_mouse_hid",
+        "address_is_rejected",
+        "gap_subevent_le_connection_complete_get_status",
+        "sm_event_reencryption_complete_get_status",
+        "BLE_HOGP_DESCRIPTOR_STORAGE_SIZE 2048u",
+    ):
+        if token not in ble_pico:
+            fail(f"G06 BLE recovery/mouse-selection guard is missing {token}")
 
     usb_text = "\n".join(
         path.read_text(encoding="utf-8")
@@ -138,20 +211,29 @@ def main() -> None:
             fail(f"fixed USB identity depends on Bluetooth token: {token}")
     for token in ("tud_disconnect", "tud_connect"):
         if token in usb_text:
-            fail(f"G05 must never force USB re-enumeration: {token}")
+            fail(f"G06 must never force USB re-enumeration: {token}")
+
+    usb_pico = (USB_SRC / "usb_hid_pico.c").read_text(encoding="utf-8")
+    if "tud_task_ext(0u, false)" not in usb_pico:
+        fail("G06 Core0 USB service must be explicitly non-blocking")
+    if re.search(r"\btud_task\s*\(\s*\)\s*;", usb_pico):
+        fail("blocking tud_task() is forbidden in the shared Core0 UI loop")
+    if "REMAPPER_USB_DEBUG_FLUSH_BUDGET" not in usb_pico:
+        fail("debug CDC flush must have a per-tick byte budget")
 
     tusb_config = (USB_SRC / "include" / "tusb_config.h").read_text(encoding="utf-8")
     if not re.search(r"#define\s+CFG_TUD_HID\s+2\b", tusb_config):
         fail("TinyUSB is not configured for exactly two HID interfaces")
-    descriptor_text = (USB_SRC / "usb_descriptors.c").read_text(encoding="utf-8")
-    for token in ("HID_ITF_PROTOCOL_MOUSE", "HID_ITF_PROTOCOL_KEYBOARD", "EPNUM_MOUSE", "EPNUM_KEYBOARD"):
-        if token not in descriptor_text:
-            fail(f"fixed USB descriptor is missing {token}")
 
     main_text = (SRC / "app" / "main.c").read_text(encoding="utf-8").lower()
     for token in ("tinyusb", "tusb", "tud_", "btstack", "cyw43", "hid_host", "gpio_", "spi_"):
         if token in main_text:
-            fail(f"G05 app composition crosses a transport/HAL boundary: {token}")
+            fail(f"Core0 app composition crosses a transport/HAL boundary: {token}")
+    for token in ("remapper_bt_runtime_poll", "remapper_hid_aggregator_apply_mouse", "remapper_usb_hid_pico_send_mouse"):
+        if token not in main_text:
+            fail(f"G06 Core0 passthrough pipeline is missing {token}")
+    if "remapper_runtime_messages_per_tick" not in main_text:
+        fail("Core0 must bound Bluetooth queue work per UI tick")
 
 
 if __name__ == "__main__":

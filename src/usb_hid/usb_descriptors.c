@@ -13,16 +13,28 @@ static const uint8_t k_keyboard_report_descriptor[] = {
     TUD_HID_REPORT_DESC_KEYBOARD()
 };
 
+#if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
+#define REMAPPER_USB_DEVICE_CLASS TUSB_CLASS_MISC
+#define REMAPPER_USB_DEVICE_SUBCLASS MISC_SUBCLASS_COMMON
+#define REMAPPER_USB_DEVICE_PROTOCOL MISC_PROTOCOL_IAD
+#define REMAPPER_USB_DESCRIPTOR_PID REMAPPER_USB_DEBUG_PID
+#else
+#define REMAPPER_USB_DEVICE_CLASS 0x00
+#define REMAPPER_USB_DEVICE_SUBCLASS 0x00
+#define REMAPPER_USB_DEVICE_PROTOCOL 0x00
+#define REMAPPER_USB_DESCRIPTOR_PID REMAPPER_USB_PID
+#endif
+
 static const tusb_desc_device_t k_device_descriptor = {
     .bLength = sizeof(tusb_desc_device_t),
     .bDescriptorType = TUSB_DESC_DEVICE,
     .bcdUSB = 0x0200,
-    .bDeviceClass = 0x00,
-    .bDeviceSubClass = 0x00,
-    .bDeviceProtocol = 0x00,
+    .bDeviceClass = REMAPPER_USB_DEVICE_CLASS,
+    .bDeviceSubClass = REMAPPER_USB_DEVICE_SUBCLASS,
+    .bDeviceProtocol = REMAPPER_USB_DEVICE_PROTOCOL,
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor = REMAPPER_USB_VID,
-    .idProduct = REMAPPER_USB_PID,
+    .idProduct = REMAPPER_USB_DESCRIPTOR_PID,
     .bcdDevice = REMAPPER_USB_BCD_DEVICE,
     .iManufacturer = 0x01,
     .iProduct = 0x02,
@@ -45,12 +57,25 @@ const uint8_t *tud_hid_descriptor_report_cb(uint8_t instance)
 enum {
     ITF_NUM_MOUSE = REMAPPER_USB_HID_MOUSE_INTERFACE,
     ITF_NUM_KEYBOARD = REMAPPER_USB_HID_KEYBOARD_INTERFACE,
-    ITF_NUM_TOTAL = REMAPPER_USB_HID_INTERFACE_COUNT,
+#if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
+    ITF_NUM_CDC,
+    ITF_NUM_CDC_DATA,
+#endif
+    ITF_NUM_TOTAL,
 };
 
+#if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + (2u * TUD_HID_DESC_LEN) + TUD_CDC_DESC_LEN)
+#else
 #define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + (2u * TUD_HID_DESC_LEN))
+#endif
 #define EPNUM_MOUSE 0x81u
 #define EPNUM_KEYBOARD 0x82u
+#if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
+#define EPNUM_CDC_NOTIF 0x83u
+#define EPNUM_CDC_OUT 0x04u
+#define EPNUM_CDC_IN 0x84u
+#endif
 
 static const uint8_t k_configuration_descriptor[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0x00, 500),
@@ -70,6 +95,16 @@ static const uint8_t k_configuration_descriptor[] = {
         EPNUM_KEYBOARD,
         CFG_TUD_HID_EP_BUFSIZE,
         1),
+#if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
+    TUD_CDC_DESCRIPTOR(
+        ITF_NUM_CDC,
+        3,
+        EPNUM_CDC_NOTIF,
+        8,
+        EPNUM_CDC_OUT,
+        EPNUM_CDC_IN,
+        64),
+#endif
 };
 
 const uint8_t *tud_descriptor_configuration_cb(uint8_t index)
@@ -92,7 +127,12 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 
     const char *text = NULL;
     if (index == 1u) text = REMAPPER_USB_MANUFACTURER;
+#if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
+    if (index == 2u) text = REMAPPER_USB_DEBUG_PRODUCT;
+    if (index == 3u) text = "G06 Debug CDC";
+#else
     if (index == 2u) text = REMAPPER_USB_PRODUCT;
+#endif
     if (text == NULL) return NULL;
 
     size_t count = strlen(text);

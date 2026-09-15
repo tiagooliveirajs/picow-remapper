@@ -6,6 +6,7 @@
 
 #define REMAPPER_USB_VID UINT16_C(0xcafe)
 #define REMAPPER_USB_PID UINT16_C(0x4010)
+#define REMAPPER_USB_DEBUG_PID UINT16_C(0x4011)
 #define REMAPPER_USB_BCD_DEVICE UINT16_C(0x0100)
 #define REMAPPER_USB_HID_INTERFACE_COUNT 2u
 #define REMAPPER_USB_HID_MOUSE_INTERFACE 0u
@@ -13,6 +14,7 @@
 #define REMAPPER_USB_HID_KEYCODE_COUNT 6u
 #define REMAPPER_USB_MANUFACTURER "PicoW Remapper"
 #define REMAPPER_USB_PRODUCT "PicoW Remapper Mouse + Keyboard"
+#define REMAPPER_USB_DEBUG_PRODUCT "PicoW Remapper G06 Debug"
 
 typedef struct {
     uint16_t vid;
@@ -55,5 +57,6 @@ void remapper_usb_hid_pico_task(void);
 bool remapper_usb_hid_pico_mounted(void);
 bool remapper_usb_hid_pico_send_mouse(const remapper_usb_mouse_report_t *report);
 bool remapper_usb_hid_pico_send_keyboard(const remapper_usb_keyboard_report_t *report);
+void remapper_usb_hid_pico_debug_printf(const char *format, ...);
 
 #endif
