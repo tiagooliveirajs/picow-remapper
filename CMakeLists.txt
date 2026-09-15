@@ -33,6 +33,19 @@ endif()
 include(cmake/RemapperModules.cmake)
 remapper_define_modules()
 
+# Keep BTstack/HIDS framing outside the descriptor-driven canonical parser.
+# The original parser implementation is compiled under an internal symbol;
+# ble_hogp_framing.c owns the public entry point and removes a duplicated
+# Report ID only when the Report Map proves the payload is exactly one byte
+# longer than expected.
+target_sources(ble_hogp PRIVATE src/ble_hogp/ble_hogp_framing.c)
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/cmake/../src/ble_hogp/ble_hogp.c"
+    PROPERTIES
+        COMPILE_DEFINITIONS
+            "remapper_ble_hogp_parser_parse_report=remapper_ble_hogp_parser_parse_report_payload"
+)
+
 if(REMAPPER_BUILD_PICO)
     target_sources(renderer PRIVATE src/renderer/st7789_pico.c)
     target_link_libraries(renderer PRIVATE pico_stdlib hardware_gpio hardware_spi)
@@ -116,12 +129,17 @@ if(REMAPPER_BUILD_TESTS)
     target_link_libraries(test_g06_ble_mouse PRIVATE ble_hogp bt_runtime hid_aggregator usb_hid)
     target_compile_options(test_g06_ble_mouse PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+    add_executable(test_g06_hids_framing tests/test_g06_hids_framing.c)
+    target_link_libraries(test_g06_hids_framing PRIVATE ble_hogp)
+    target_compile_options(test_g06_hids_framing PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
     add_test(NAME scaffold_contract COMMAND test_scaffold)
     add_test(NAME ux_interaction_contract COMMAND test_ux_interaction)
     add_test(NAME g03_renderer_hat_contract COMMAND test_g03_ui)
     add_test(NAME g04_usb_layout_contract COMMAND test_g04_usb_layout)
     add_test(NAME g05_canonical_hid_ownership COMMAND test_g05_hid_ownership)
     add_test(NAME g06_ble_mouse_passthrough COMMAND test_g06_ble_mouse)
+    add_test(NAME g06_btstack_hids_framing COMMAND test_g06_hids_framing)
     add_test(NAME architecture_boundaries COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_architecture.py)
 endif()
 
@@ -129,10 +147,10 @@ if(REMAPPER_BUILD_PICO)
     add_executable(picow_remapper src/app/main.c)
     target_link_libraries(picow_remapper PRIVATE pico_stdlib app usb_hid)
     if(REMAPPER_USB_DEBUG_CDC)
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.4-g06-debug-cdc")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.5-g06-debug-cdc")
         target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=1 CFG_TUD_CDC=1)
     else()
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.2-g06")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.3-g06")
         target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=0 CFG_TUD_CDC=0)
     endif()
     target_compile_definitions(
