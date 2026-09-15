@@ -9,7 +9,7 @@ on:
 
 jobs:
   host:
-    name: host-architecture
+    name: host-ux-architecture
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -25,7 +25,7 @@ jobs:
         run: ctest --test-dir build-host --output-on-failure
 
   pico2w:
-    name: pico2-w-scaffold
+    name: pico2-w-g02
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -43,18 +43,18 @@ jobs:
           git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1
           echo "PICO_SDK_PATH=$RUNNER_TEMP/pico-sdk" >> "$GITHUB_ENV"
 
-      - name: Configure Pico 2 W scaffold
+      - name: Configure Pico 2 W G02
         run: cmake -S . -B build-pico -DREMAPPER_BUILD_PICO=ON -DREMAPPER_BUILD_TESTS=OFF -DPICO_BOARD=pico2_w -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build Pico 2 W scaffold
+      - name: Build Pico 2 W G02
         run: cmake --build build-pico --parallel
 
       - name: Verify UF2
         run: test -s build-pico/picow_remapper.uf2
 
-      - name: Upload G01 UF2
+      - name: Upload G02 UF2
         uses: actions/upload-artifact@v4
         with:
-          name: picow-remapper-g01-pico2w
+          name: picow-remapper-g02-pico2w
           path: build-pico/picow_remapper.uf2
           if-no-files-found: error
