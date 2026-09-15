@@ -4,7 +4,11 @@
 
 #include "btstack.h"
 
-#define BLE_HOGP_DESCRIPTOR_STORAGE_SIZE 1024u
+#define BLE_HOGP_DESCRIPTOR_STORAGE_SIZE 2048u
+#define BLE_HOGP_REJECTED_DEVICE_CAPACITY 4u
+#define BLE_APPEARANCE_HID_GENERIC 960u
+#define BLE_APPEARANCE_HID_MOUSE 962u
+#define BLE_APPEARANCE_HID_LAST 1023u
 
 _Static_assert(
     sizeof(remapper_canonical_mouse_event_t) <=
@@ -22,7 +26,14 @@ typedef enum {
     BLE_HOGP_STATE_SECURING,
     BLE_HOGP_STATE_CONNECTING_HIDS,
     BLE_HOGP_STATE_READY,
+    BLE_HOGP_STATE_DISCONNECTING,
 } ble_hogp_state_t;
+
+typedef struct {
+    bool used;
+    bd_addr_type_t address_type;
+    bd_addr_t address;
+} ble_hogp_rejected_device_t;
 
 static ble_hogp_state_t g_state;
 static bd_addr_t g_remote_address;
@@ -31,6 +42,8 @@ static hci_con_handle_t g_connection_handle = HCI_CON_HANDLE_INVALID;
 static uint16_t g_hids_cid;
 static uint8_t g_descriptor_storage[BLE_HOGP_DESCRIPTOR_STORAGE_SIZE];
 static remapper_ble_hogp_parser_t g_parser;
+static ble_hogp_rejected_device_t g_rejected_devices[BLE_HOGP_REJECTED_DEVICE_CAPACITY];
+static size_t g_rejected_next;
 static btstack_packet_callback_registration_t g_hci_registration;
 static btstack_packet_callback_registration_t g_sm_registration;
 
@@ -104,6 +117,59 @@ static bool advertisement_has_hid_service(const uint8_t *packet)
         ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE);
 }
 
+static uint16_t advertisement_appearance(const uint8_t *packet)
+{
+    const uint8_t *data = gap_event_advertising_report_get_data(packet);
+    const uint8_t length = gap_event_advertising_report_get_data_length(packet);
+    ad_context_t context;
+    for (ad_iterator_init(&context, length, (uint8_t *)data);
+         ad_iterator_has_more(&context);
+         ad_iterator_next(&context)) {
+        if (ad_iterator_get_data_type(&context) != BLUETOOTH_DATA_TYPE_APPEARANCE ||
+            ad_iterator_get_data_len(&context) < 2u) {
+            continue;
+        }
+        return little_endian_read_16(ad_iterator_get_data(&context), 0u);
+    }
+    return 0u;
+}
+
+static bool appearance_is_explicit_non_mouse_hid(uint16_t appearance)
+{
+    return appearance >= BLE_APPEARANCE_HID_GENERIC &&
+        appearance <= BLE_APPEARANCE_HID_LAST &&
+        appearance != BLE_APPEARANCE_HID_GENERIC &&
+        appearance != BLE_APPEARANCE_HID_MOUSE;
+}
+
+static bool address_is_rejected(
+    const bd_addr_t address,
+    bd_addr_type_t address_type)
+{
+    for (size_t index = 0u; index < BLE_HOGP_REJECTED_DEVICE_CAPACITY; ++index) {
+        if (!g_rejected_devices[index].used ||
+            g_rejected_devices[index].address_type != address_type) {
+            continue;
+        }
+        if (memcmp(g_rejected_devices[index].address, address, sizeof(bd_addr_t)) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void reject_address(
+    const bd_addr_t address,
+    bd_addr_type_t address_type)
+{
+    if (address_is_rejected(address, address_type)) return;
+    ble_hogp_rejected_device_t *slot = &g_rejected_devices[g_rejected_next];
+    slot->used = true;
+    slot->address_type = address_type;
+    memcpy(slot->address, address, sizeof(bd_addr_t));
+    g_rejected_next = (g_rejected_next + 1u) % BLE_HOGP_REJECTED_DEVICE_CAPACITY;
+}
+
 static void start_scan(void)
 {
     g_state = BLE_HOGP_STATE_SCANNING;
@@ -114,7 +180,18 @@ static void start_scan(void)
 
 static void disconnect_and_rescan(void)
 {
-    publish_debug(REMAPPER_BLE_HOGP_DEBUG_RESCAN, 0u, 0u, (int32_t)g_state, 0, 0);
+    const ble_hogp_state_t previous_state = g_state;
+    publish_debug(
+        REMAPPER_BLE_HOGP_DEBUG_RESCAN,
+        0u,
+        0u,
+        (int32_t)previous_state,
+        0,
+        0);
+    if (previous_state == BLE_HOGP_STATE_READY) {
+        (void)publish_status(REMAPPER_BLE_HOGP_MESSAGE_DISCONNECTED);
+    }
+    g_state = BLE_HOGP_STATE_DISCONNECTING;
     if (g_connection_handle != HCI_CON_HANDLE_INVALID) {
         gap_disconnect(g_connection_handle);
     } else {
@@ -132,11 +209,16 @@ static void connect_hid_service(void)
         (int32_t)g_connection_handle,
         0,
         0);
-    hids_client_connect(
+    g_hids_cid = 0u;
+    const uint8_t status = hids_client_connect(
         g_connection_handle,
         &handle_gatt_client_event,
         HID_PROTOCOL_MODE_REPORT,
         &g_hids_cid);
+    if (status != ERROR_CODE_SUCCESS) {
+        publish_debug(REMAPPER_BLE_HOGP_DEBUG_ERROR, status, 0u, 4, 0, 0);
+        disconnect_and_rescan();
+    }
 }
 
 static void handle_gatt_client_event(
@@ -184,14 +266,26 @@ static void handle_gatt_client_event(
         const remapper_hid_source_t source =
             remapper_hid_source_make(REMAPPER_HID_SOURCE_MOUSE, 1u);
 
-        if (descriptor == NULL || descriptor_len == 0u ||
-            !remapper_ble_hogp_parser_configure(
+        const bool parser_ready = descriptor != NULL && descriptor_len > 0u &&
+            remapper_ble_hogp_parser_configure(
                 &g_parser,
                 source,
                 descriptor,
-                descriptor_len) ||
-            !remapper_ble_hogp_parser_has_mouse(&g_parser)) {
-            publish_debug(REMAPPER_BLE_HOGP_DEBUG_ERROR, 0u, 0u, 2, (int32_t)descriptor_len, 0);
+                descriptor_len) &&
+            remapper_ble_hogp_parser_has_mouse(&g_parser);
+        if (!parser_ready) {
+            publish_debug(
+                REMAPPER_BLE_HOGP_DEBUG_ERROR,
+                0u,
+                0u,
+                2,
+                (int32_t)descriptor_len,
+                0);
+            /* A valid HIDS report map with no Mouse collection is a keyboard/
+             * other HID. Remember it so scan does not pair it in a loop. */
+            if (descriptor != NULL && descriptor_len > 0u) {
+                reject_address(g_remote_address, g_remote_address_type);
+            }
             disconnect_and_rescan();
             return;
         }
@@ -209,6 +303,10 @@ static void handle_gatt_client_event(
     }
 
     case GATTSERVICE_SUBEVENT_HID_SERVICE_DISCONNECTED:
+        publish_debug(REMAPPER_BLE_HOGP_DEBUG_ERROR, 0u, 0u, 5, 0, 0);
+        if (g_state != BLE_HOGP_STATE_DISCONNECTING) {
+            disconnect_and_rescan();
+        }
         break;
 
     case GATTSERVICE_SUBEVENT_HID_REPORT: {
@@ -231,7 +329,13 @@ static void handle_gatt_client_event(
                 report_len,
                 publish_mouse_event,
                 NULL)) {
-            publish_debug(REMAPPER_BLE_HOGP_DEBUG_ERROR, 0u, report_id, 3, (int32_t)report_len, 0);
+            publish_debug(
+                REMAPPER_BLE_HOGP_DEBUG_ERROR,
+                0u,
+                report_id,
+                3,
+                (int32_t)report_len,
+                0);
             disconnect_and_rescan();
         }
         break;
@@ -261,32 +365,54 @@ static void hci_packet_handler(
         }
         break;
 
-    case GAP_EVENT_ADVERTISING_REPORT:
+    case GAP_EVENT_ADVERTISING_REPORT: {
         if (g_state != BLE_HOGP_STATE_SCANNING ||
             !advertisement_has_hid_service(packet)) {
             break;
         }
+
+        bd_addr_t candidate_address;
+        gap_event_advertising_report_get_address(packet, candidate_address);
+        const bd_addr_type_t candidate_type =
+            gap_event_advertising_report_get_address_type(packet);
+        const uint16_t appearance = advertisement_appearance(packet);
         publish_debug(
             REMAPPER_BLE_HOGP_DEBUG_HID_ADVERTISEMENT,
-            gap_event_advertising_report_get_address_type(packet),
+            (uint8_t)candidate_type,
             0u,
             (int32_t)gap_event_advertising_report_get_rssi(packet),
-            0,
+            (int32_t)appearance,
             0);
+
+        if (address_is_rejected(candidate_address, candidate_type)) {
+            break;
+        }
+        if (appearance_is_explicit_non_mouse_hid(appearance)) {
+            reject_address(candidate_address, candidate_type);
+            publish_debug(
+                REMAPPER_BLE_HOGP_DEBUG_ERROR,
+                0u,
+                0u,
+                6,
+                (int32_t)appearance,
+                0);
+            break;
+        }
+
         gap_stop_scan();
-        gap_event_advertising_report_get_address(packet, g_remote_address);
-        g_remote_address_type =
-            gap_event_advertising_report_get_address_type(packet);
+        memcpy(g_remote_address, candidate_address, sizeof(bd_addr_t));
+        g_remote_address_type = candidate_type;
         g_state = BLE_HOGP_STATE_CONNECTING;
         publish_debug(
             REMAPPER_BLE_HOGP_DEBUG_CONNECTING,
             (uint8_t)g_remote_address_type,
             0u,
-            0,
+            (int32_t)appearance,
             0,
             0);
         gap_connect(g_remote_address, g_remote_address_type);
         break;
+    }
 
     case HCI_EVENT_META_GAP:
         if (hci_event_gap_meta_get_subevent_code(packet) !=
@@ -294,15 +420,26 @@ static void hci_packet_handler(
             g_state != BLE_HOGP_STATE_CONNECTING) {
             break;
         }
-        g_connection_handle =
-            gap_subevent_le_connection_complete_get_connection_handle(packet);
-        publish_debug(
-            REMAPPER_BLE_HOGP_DEBUG_LE_CONNECTED,
-            gap_subevent_le_connection_complete_get_status(packet),
-            0u,
-            (int32_t)g_connection_handle,
-            0,
-            0);
+        {
+            const uint8_t status =
+                gap_subevent_le_connection_complete_get_status(packet);
+            const hci_con_handle_t handle =
+                gap_subevent_le_connection_complete_get_connection_handle(packet);
+            publish_debug(
+                REMAPPER_BLE_HOGP_DEBUG_LE_CONNECTED,
+                status,
+                0u,
+                (int32_t)handle,
+                0,
+                0);
+            if (status != ERROR_CODE_SUCCESS) {
+                g_connection_handle = HCI_CON_HANDLE_INVALID;
+                publish_debug(REMAPPER_BLE_HOGP_DEBUG_ERROR, status, 0u, 7, 0, 0);
+                start_scan();
+                break;
+            }
+            g_connection_handle = handle;
+        }
         g_state = BLE_HOGP_STATE_SECURING;
         publish_debug(
             REMAPPER_BLE_HOGP_DEBUG_PAIRING_STARTED,
@@ -377,16 +514,23 @@ static void sm_packet_handler(
         break;
     }
 
-    case SM_EVENT_REENCRYPTION_COMPLETE:
+    case SM_EVENT_REENCRYPTION_COMPLETE: {
+        const uint8_t status = sm_event_reencryption_complete_get_status(packet);
         publish_debug(
             REMAPPER_BLE_HOGP_DEBUG_PAIRING_COMPLETE,
-            0u,
+            status,
             0u,
             (int32_t)g_connection_handle,
             1,
             0);
-        security_ready = true;
+        if (status == ERROR_CODE_SUCCESS) {
+            security_ready = true;
+        } else {
+            publish_debug(REMAPPER_BLE_HOGP_DEBUG_ERROR, status, 0u, 8, 0, 0);
+            disconnect_and_rescan();
+        }
         break;
+    }
 
     default:
         break;
@@ -400,6 +544,8 @@ static void sm_packet_handler(
 static void ble_hogp_session_setup(void)
 {
     memset(&g_parser, 0, sizeof(g_parser));
+    memset(g_rejected_devices, 0, sizeof(g_rejected_devices));
+    g_rejected_next = 0u;
     g_state = BLE_HOGP_STATE_WAITING_FOR_STACK;
     g_connection_handle = HCI_CON_HANDLE_INVALID;
     g_hids_cid = 0u;

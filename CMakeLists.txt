@@ -69,8 +69,15 @@ if(REMAPPER_BUILD_PICO)
     target_link_libraries(ble_hogp PRIVATE pico_stdlib pico_btstack_ble)
 
     if(REMAPPER_USB_DEBUG_CDC)
-        target_compile_definitions(usb_hid PUBLIC REMAPPER_USB_DEBUG_CDC=1)
+        # Force CDC into both our descriptor translation unit and TinyUSB's
+        # interface sources. The normal build remains exactly two HID classes.
+        target_compile_definitions(usb_hid PUBLIC REMAPPER_USB_DEBUG_CDC=1 CFG_TUD_CDC=1)
         target_compile_definitions(ble_hogp PRIVATE REMAPPER_USB_DEBUG_CDC=1)
+        if(TARGET tinyusb_device_base)
+            target_compile_definitions(tinyusb_device_base INTERFACE REMAPPER_USB_DEBUG_CDC=1 CFG_TUD_CDC=1)
+        endif()
+    else()
+        target_compile_definitions(usb_hid PUBLIC REMAPPER_USB_DEBUG_CDC=0 CFG_TUD_CDC=0)
     endif()
 endif()
 
@@ -115,9 +122,11 @@ if(REMAPPER_BUILD_PICO)
     add_executable(picow_remapper src/app/main.c)
     target_link_libraries(picow_remapper PRIVATE pico_stdlib app usb_hid)
     if(REMAPPER_USB_DEBUG_CDC)
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.2-g06-debug-cdc")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.3-g06-debug-cdc")
+        target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=1 CFG_TUD_CDC=1)
     else()
-        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.0-g06")
+        set(REMAPPER_FIRMWARE_VERSION_VALUE "0.6.1-g06")
+        target_compile_definitions(picow_remapper PRIVATE REMAPPER_USB_DEBUG_CDC=0 CFG_TUD_CDC=0)
     endif()
     target_compile_definitions(
         picow_remapper

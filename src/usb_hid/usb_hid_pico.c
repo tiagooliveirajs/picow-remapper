@@ -8,6 +8,7 @@
 #if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
 #define REMAPPER_USB_DEBUG_RING_SIZE 4096u
 #define REMAPPER_USB_DEBUG_LINE_SIZE 192u
+#define REMAPPER_USB_DEBUG_FLUSH_BUDGET 256u
 static uint8_t g_debug_ring[REMAPPER_USB_DEBUG_RING_SIZE];
 static size_t g_debug_head;
 static size_t g_debug_tail;
@@ -30,15 +31,22 @@ static void debug_cdc_flush(void)
 {
     if (!tud_cdc_connected() || g_debug_count == 0u) return;
 
-    while (g_debug_count > 0u) {
+    size_t budget = REMAPPER_USB_DEBUG_FLUSH_BUDGET;
+    bool wrote_any = false;
+    while (g_debug_count > 0u && budget > 0u) {
         size_t contiguous = REMAPPER_USB_DEBUG_RING_SIZE - g_debug_tail;
         if (contiguous > g_debug_count) contiguous = g_debug_count;
-        const uint32_t written = tud_cdc_write(&g_debug_ring[g_debug_tail], (uint32_t)contiguous);
+        if (contiguous > budget) contiguous = budget;
+        const uint32_t written = tud_cdc_write(
+            &g_debug_ring[g_debug_tail],
+            (uint32_t)contiguous);
         if (written == 0u) break;
         g_debug_tail = (g_debug_tail + (size_t)written) % REMAPPER_USB_DEBUG_RING_SIZE;
         g_debug_count -= (size_t)written;
+        budget -= (size_t)written;
+        wrote_any = true;
     }
-    tud_cdc_write_flush();
+    if (wrote_any) tud_cdc_write_flush();
 }
 #endif
 
@@ -54,7 +62,8 @@ bool remapper_usb_hid_pico_init(void)
 
 void remapper_usb_hid_pico_task(void)
 {
-    tud_task();
+    /* Core0 also owns the HAT/UI loop. Never wait indefinitely for USB work. */
+    tud_task_ext(0u, false);
 #if defined(REMAPPER_USB_DEBUG_CDC) && REMAPPER_USB_DEBUG_CDC
     debug_cdc_flush();
 #endif

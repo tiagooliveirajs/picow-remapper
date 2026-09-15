@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -12,6 +13,8 @@
 #include "remapper/renderer/renderer.h"
 #include "remapper/renderer/st7789_pico.h"
 #include "remapper/usb_hid/usb_hid.h"
+
+#define REMAPPER_RUNTIME_MESSAGES_PER_TICK 32u
 
 static remapper_control_t interaction_control(remapper_hat_control_t control)
 {
@@ -61,14 +64,16 @@ static void log_ble_debug_record(const remapper_ble_hogp_debug_record_t *record)
         break;
     case REMAPPER_BLE_HOGP_DEBUG_HID_ADVERTISEMENT:
         remapper_usb_hid_pico_debug_printf(
-            "[BLE] HID advertisement type=%u rssi=%ld\r\n",
+            "[BLE] HID advertisement type=%u rssi=%ld appearance=%ld\r\n",
             record->status,
-            (long)record->a);
+            (long)record->a,
+            (long)record->b);
         break;
     case REMAPPER_BLE_HOGP_DEBUG_CONNECTING:
         remapper_usb_hid_pico_debug_printf(
-            "[BLE] connecting address_type=%u\r\n",
-            record->status);
+            "[BLE] connecting address_type=%u appearance=%ld\r\n",
+            record->status,
+            (long)record->a);
         break;
     case REMAPPER_BLE_HOGP_DEBUG_LE_CONNECTED:
         remapper_usb_hid_pico_debug_printf(
@@ -81,7 +86,7 @@ static void log_ble_debug_record(const remapper_ble_hogp_debug_record_t *record)
         break;
     case REMAPPER_BLE_HOGP_DEBUG_PAIRING_COMPLETE:
         remapper_usb_hid_pico_debug_printf(
-            "[SM] pairing complete status=%u handle=%ld reencrypt=%ld\r\n",
+            "[SM] security complete status=%u handle=%ld reencrypt=%ld\r\n",
             record->status,
             (long)record->a,
             (long)record->b);
@@ -243,7 +248,9 @@ int main(void)
     (void)remapper_ble_hogp_start();
 
     while (true) {
+        /* USB service is non-blocking; HAT scan is always serviced every tick. */
         remapper_usb_hid_pico_task();
+        remapper_hat_pico_task();
 
         const bool usb_mounted = remapper_usb_hid_pico_mounted();
         if (usb_mounted != usb_was_mounted) {
@@ -261,7 +268,10 @@ int main(void)
         }
 
         remapper_bt_runtime_message_t runtime_message;
-        while (remapper_bt_runtime_poll(&runtime_message)) {
+        for (size_t runtime_count = 0u;
+             runtime_count < REMAPPER_RUNTIME_MESSAGES_PER_TICK &&
+                 remapper_bt_runtime_poll(&runtime_message);
+             ++runtime_count) {
             if (runtime_message.channel == REMAPPER_BLE_HOGP_RUNTIME_CHANNEL &&
                 runtime_message.type == REMAPPER_BLE_HOGP_MESSAGE_DEBUG &&
                 runtime_message.length == sizeof(remapper_ble_hogp_debug_record_t)) {
@@ -306,7 +316,6 @@ int main(void)
                 &last_mouse_buttons_valid);
         }
 
-        remapper_hat_pico_task();
         remapper_hat_event_t hat_event;
         while (remapper_hat_pico_poll_event(&hat_event)) {
             const remapper_control_t control = interaction_control(hat_event.control);
