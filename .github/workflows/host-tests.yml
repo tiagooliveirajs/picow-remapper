@@ -1,0 +1,34 @@
+name: Host Tests
+
+on:
+  push:
+    branches:
+      - main
+      - 'gate/**'
+    paths:
+      - 'CMakeLists.txt'
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/host-tests.yml'
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/host-tests.yml'
+
+jobs:
+  canonical-hid:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure host build
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build host tests
+        run: cmake --build build --parallel
+
+      - name: Run CTest
+        run: ctest --test-dir build --output-on-failure
